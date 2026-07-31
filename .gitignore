@@ -1,0 +1,13 @@
+.agents/
+.claude/
+_bmad/
+_bmad-output/
+go.work
+go.work.sum
+.rnix/
+.cursor/
+.codegraph/
+.qoder/
+.bmad-loop/
+.codex/
+docs/HANDOFF.md

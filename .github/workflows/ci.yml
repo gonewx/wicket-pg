@@ -1,0 +1,47 @@
+name: Lineage and Build Gates
+
+# This workflow consumes no event-supplied text: every step runs a fixed
+# command against the checked-out tree. Keep it that way — interpolating
+# ${{ github.event.* }} into a run: block would open a command-injection path.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  lineage-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.0-rc.1'
+
+      # Runs first and gates everything else: an original-authorship or
+      # upstream-marker violation should fail before any build work happens.
+      - name: Lineage gates
+        run: go test ./tests/lineage/...
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lineage-gates
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.0-rc.1'
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
