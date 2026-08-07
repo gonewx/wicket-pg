@@ -19,16 +19,16 @@ import (
 // built from NewStore with the matching store constructor, so every suite
 // case gets a brand-new empty store in its own schema:
 //
+//	storagetest.RunAuthorizationCodeStoreSuite(t, factory, opts...)
 //	storagetest.RunRefreshTokenStoreSuite(t, factory, opts...)
+//	storagetest.RunReferenceTokenStoreSuite(t, factory, opts...)
 //	storagetest.RunUserConsentStoreSuite(t, factory, opts...)
 //	storagetest.RunPersistedGrantStoreSuite(t, factory, opts...)
 //	storagetest.RunDeviceFlowStoreSuite(t, factory, opts...)
 //	storagetest.RunBackchannelAuthenticationRequestStoreSuite(t, factory, opts...)
 //
 // Each factory is independent: no schema name, pool, or constructor state is
-// shared between the seven entries (AC-3, AD-9). The remaining entry point
-// (backchannel) is wired by story 1.10 as that store adapter lands; this
-// file currently declares that access point, not its constructor.
+// shared between the seven entries (AC-3, AD-9).
 
 // TestAuthorizationCodeStoreSuite runs the authorization code conformance
 // suite (8 MUST cases plus the MAY credential case, enabled via WithMay)
@@ -100,6 +100,19 @@ func TestDeviceFlowStoreSuite(t *testing.T) {
 	storagetest.RunDeviceFlowStoreSuite(t,
 		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.DeviceFlowStore {
 			return store.NewDeviceFlowStore(pool, logger)
+		}),
+		storagetest.WithMay(true))
+}
+
+// TestBackchannelAuthenticationRequestStoreSuite runs the backchannel
+// authentication request conformance suite (9 MUST cases plus the MAY
+// credential case, enabled via WithMay) against the pgx-backed adapter on a
+// real PostgreSQL server. The suite is skipped when
+// WICKET_PG_TEST_DATABASE_URL is unset.
+func TestBackchannelAuthenticationRequestStoreSuite(t *testing.T) {
+	storagetest.RunBackchannelAuthenticationRequestStoreSuite(t,
+		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.BackchannelAuthenticationRequestStore {
+			return store.NewBackchannelAuthenticationRequestStore(pool, logger)
 		}),
 		storagetest.WithMay(true))
 }
