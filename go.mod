@@ -1,6 +1,6 @@
 module github.com/gonewx/wicket-pg
 
-go 1.27rc1
+go 1.27
 
 // This module requires the published wicket module at v0.1.2 (the first
 // semver release of the port packages). Port sentinel errors and suite
