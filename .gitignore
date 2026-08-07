@@ -12,3 +12,4 @@ go.work.sum
 .codex/
 .opencode/
 .env
+probe-tmp/

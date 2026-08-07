@@ -9,6 +9,7 @@ go 1.27rc1
 require (
 	github.com/gonewx/wicket v0.1.2
 	github.com/jackc/pgx/v5 v5.10.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

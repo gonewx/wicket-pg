@@ -4,7 +4,7 @@ PostgreSQL storage adapter for [wicket](https://github.com/gonewx/wicket).
 
 ## Status
 
-**Development in progress.** This adapter implements wicket's public storage contracts (grant store family, session, key management). wicket v0.1.x is released and the port contract is stable; the adapter implementation is the next piece of work.
+The adapter implementation is complete: all nine store types, the migrations entry point, and the conformance contract suites are in place and passing. This module is now in release preparation (v0.1.0).
 
 ## Prerequisites
 
@@ -14,11 +14,60 @@ PostgreSQL storage adapter for [wicket](https://github.com/gonewx/wicket).
 
 ## Quick Start
 
-Installation and usage documentation will be completed once the adapter implementation lands. Dependency wiring:
+### Install
 
 ```bash
-GOWORK=off go get github.com/gonewx/wicket@v0.1.1
-GOWORK=off go get github.com/jackc/pgx/v5
+GOWORK=off go get github.com/gonewx/wicket-pg@v0.1.0
+```
+
+### Apply migrations
+
+Create a `pgxpool.Pool` and call `migrations.Up` in your host startup sequence. Migrations are idempotent and never run automatically:
+
+```go
+import (
+	"context"
+
+	"github.com/gonewx/wicket-pg/migrations"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+pool, err := pgxpool.New(ctx, dsn)
+if err != nil {
+	// handle error
+}
+
+if err := migrations.Up(ctx, pool); err != nil {
+	// handle error
+}
+```
+
+`migrations.Down(ctx, pool)` is available for rollbacks.
+
+### Inject the stores
+
+Nine store constructors are provided, one per wicket storage family. Each takes the host-owned `*pgxpool.Pool` and a `*slog.Logger` (a nil logger falls back to `slog.Default()`):
+
+```go
+import (
+	"log/slog"
+
+	"github.com/gonewx/wicket-pg/store"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var pool *pgxpool.Pool   // host-owned
+var logger *slog.Logger  // may be nil; falls back to slog.Default()
+
+_ = store.NewAuthorizationCodeStore(pool, logger)
+_ = store.NewRefreshTokenStore(pool, logger)
+_ = store.NewReferenceTokenStore(pool, logger)
+_ = store.NewUserConsentStore(pool, logger)
+_ = store.NewPersistedGrantStore(pool, logger)
+_ = store.NewDeviceFlowStore(pool, logger)
+_ = store.NewBackchannelAuthenticationRequestStore(pool, logger)
+_ = store.NewSessionStore(pool, logger)
+_ = store.NewKeyRecordStore(pool, logger)
 ```
 
 ## License
