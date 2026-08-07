@@ -44,6 +44,7 @@ var expectedIndexes = []string{
 	"idx_user_consents_expires_at",
 	"idx_persisted_grants_expires_at",
 	"idx_device_codes_expires_at",
+	"idx_device_codes_user_code",
 	"idx_backchannel_auth_requests_expires_at",
 	"idx_sessions_expires",
 	"idx_persisted_grants_subject_id",
@@ -65,14 +66,14 @@ func TestE2EMigrationLifecycle(t *testing.T) {
 		t.Fatalf("first Up: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002"})
 
 	// AC-1: second Up must not error and must not duplicate objects.
 	if err := migrations.Up(t.Context(), pool); err != nil {
 		t.Fatalf("second Up: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002"})
 
 	// AC-3: Down rolls everything back and clears the bookkeeping.
 	if err := migrations.Down(t.Context(), pool); err != nil {
@@ -85,7 +86,7 @@ func TestE2EMigrationLifecycle(t *testing.T) {
 		t.Fatalf("Up after Down: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002"})
 }
 
 // TestE2EMigrationsHonorSearchPath pins the connection search_path to a
@@ -135,7 +136,7 @@ func TestE2EMigrationsHonorSearchPath(t *testing.T) {
 			t.Errorf("index %s leaked into public schema", index)
 		}
 	}
-	assertAppliedVersions(t, isolated, []string{"000001"})
+	assertAppliedVersions(t, isolated, []string{"000001", "000002"})
 
 	// Down removes the objects from the isolated schema only.
 	if err := migrations.Down(t.Context(), isolated); err != nil {
@@ -193,6 +194,7 @@ func TestE2ESchemaContract(t *testing.T) {
 		},
 		"device_codes": {
 			"handle":     "text",
+			"user_code":  "text",
 			"expires_at": "timestamptz",
 			"payload":    "jsonb",
 		},

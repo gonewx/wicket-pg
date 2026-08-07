@@ -26,9 +26,9 @@ import (
 //	storagetest.RunBackchannelAuthenticationRequestStoreSuite(t, factory, opts...)
 //
 // Each factory is independent: no schema name, pool, or constructor state is
-// shared between the seven entries (AC-3, AD-9). The remaining entry points
-// are wired by stories 1.7-1.10 as each store adapter lands; this file
-// currently declares those access points, not their constructors.
+// shared between the seven entries (AC-3, AD-9). The remaining entry point
+// (backchannel) is wired by story 1.10 as that store adapter lands; this
+// file currently declares that access point, not its constructor.
 
 // TestAuthorizationCodeStoreSuite runs the authorization code conformance
 // suite (8 MUST cases plus the MAY credential case, enabled via WithMay)
@@ -88,6 +88,18 @@ func TestPersistedGrantStoreSuite(t *testing.T) {
 	storagetest.RunPersistedGrantStoreSuite(t,
 		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.PersistedGrantStore {
 			return store.NewPersistedGrantStore(pool, logger)
+		}),
+		storagetest.WithMay(true))
+}
+
+// TestDeviceFlowStoreSuite runs the device flow conformance suite (9 MUST
+// cases plus the 2 MAY cases — the update read-back and the credential —
+// enabled via WithMay) against the pgx-backed adapter on a real PostgreSQL
+// server. The suite is skipped when WICKET_PG_TEST_DATABASE_URL is unset.
+func TestDeviceFlowStoreSuite(t *testing.T) {
+	storagetest.RunDeviceFlowStoreSuite(t,
+		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.DeviceFlowStore {
+			return store.NewDeviceFlowStore(pool, logger)
 		}),
 		storagetest.WithMay(true))
 }

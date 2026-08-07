@@ -245,6 +245,7 @@ var expectedIndexes = []string{
 	"idx_user_consents_expires_at",
 	"idx_persisted_grants_expires_at",
 	"idx_device_codes_expires_at",
+	"idx_device_codes_user_code",
 	"idx_backchannel_auth_requests_expires_at",
 	"idx_sessions_expires",
 	"idx_persisted_grants_subject_id",
