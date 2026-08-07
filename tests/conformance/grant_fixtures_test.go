@@ -20,7 +20,6 @@ import (
 // case gets a brand-new empty store in its own schema:
 //
 //	storagetest.RunRefreshTokenStoreSuite(t, factory, opts...)
-//	storagetest.RunReferenceTokenStoreSuite(t, factory, opts...)
 //	storagetest.RunUserConsentStoreSuite(t, factory, opts...)
 //	storagetest.RunPersistedGrantStoreSuite(t, factory, opts...)
 //	storagetest.RunDeviceFlowStoreSuite(t, factory, opts...)
@@ -28,7 +27,7 @@ import (
 //
 // Each factory is independent: no schema name, pool, or constructor state is
 // shared between the seven entries (AC-3, AD-9). The remaining entry points
-// are wired by stories 1.6-1.10 as each store adapter lands; this file
+// are wired by stories 1.7-1.10 as each store adapter lands; this file
 // currently declares those access points, not their constructors.
 
 // TestAuthorizationCodeStoreSuite runs the authorization code conformance
@@ -52,6 +51,18 @@ func TestRefreshTokenStoreSuite(t *testing.T) {
 	storagetest.RunRefreshTokenStoreSuite(t,
 		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.RefreshTokenStore {
 			return store.NewRefreshTokenStore(pool, logger)
+		}),
+		storagetest.WithMay(true))
+}
+
+// TestReferenceTokenStoreSuite runs the reference token conformance suite
+// (8 MUST cases plus the MAY credential case, enabled via WithMay) against
+// the pgx-backed adapter on a real PostgreSQL server. The suite is skipped
+// when WICKET_PG_TEST_DATABASE_URL is unset.
+func TestReferenceTokenStoreSuite(t *testing.T) {
+	storagetest.RunReferenceTokenStoreSuite(t,
+		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.ReferenceTokenStore {
+			return store.NewReferenceTokenStore(pool, logger)
 		}),
 		storagetest.WithMay(true))
 }
