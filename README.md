@@ -4,17 +4,22 @@ PostgreSQL storage adapter for [wicket](https://github.com/gonewx/wicket).
 
 ## Status
 
-**Development in progress.** This adapter is being built after wicket's Epic 9 completes (storage contract stabilization + first semver tag).
+**Development in progress.** This adapter implements wicket's public storage contracts (grant store family, session, key management). wicket v0.1.x is released and the port contract is stable; the adapter implementation is the next piece of work.
 
 ## Prerequisites
 
-- wicket v0.x (once published)
-- PostgreSQL 12+
+- wicket v0.1.x
+- PostgreSQL 15+
 - Go 1.27+
 
 ## Quick Start
 
-Installation and usage documentation will be added once wicket Epic 9 is complete and the storage contracts are stable.
+Installation and usage documentation will be completed once the adapter implementation lands. Dependency wiring:
+
+```bash
+GOWORK=off go get github.com/gonewx/wicket@v0.1.1
+GOWORK=off go get github.com/jackc/pgx/v5
+```
 
 ## License
 
