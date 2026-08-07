@@ -78,3 +78,16 @@ func TestUserConsentStoreSuite(t *testing.T) {
 		}),
 		storagetest.WithMay(true))
 }
+
+// TestPersistedGrantStoreSuite runs the persisted grant conformance suite
+// (11 MUST cases plus the 2 MAY cases — the combined filter and the
+// credential — enabled via WithMay) against the pgx-backed adapter on a
+// real PostgreSQL server. The suite is skipped when
+// WICKET_PG_TEST_DATABASE_URL is unset.
+func TestPersistedGrantStoreSuite(t *testing.T) {
+	storagetest.RunPersistedGrantStoreSuite(t,
+		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.PersistedGrantStore {
+			return store.NewPersistedGrantStore(pool, logger)
+		}),
+		storagetest.WithMay(true))
+}
