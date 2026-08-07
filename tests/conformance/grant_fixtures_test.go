@@ -66,3 +66,15 @@ func TestReferenceTokenStoreSuite(t *testing.T) {
 		}),
 		storagetest.WithMay(true))
 }
+
+// TestUserConsentStoreSuite runs the user consent conformance suite (8 MUST
+// cases plus the MAY credential case, enabled via WithMay) against the
+// pgx-backed adapter on a real PostgreSQL server. The suite is skipped when
+// WICKET_PG_TEST_DATABASE_URL is unset.
+func TestUserConsentStoreSuite(t *testing.T) {
+	storagetest.RunUserConsentStoreSuite(t,
+		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.UserConsentStore {
+			return store.NewUserConsentStore(pool, logger)
+		}),
+		storagetest.WithMay(true))
+}
