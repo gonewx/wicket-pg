@@ -11,3 +11,4 @@ go.work.sum
 .bmad-loop/
 .codex/
 .opencode/
+.env
