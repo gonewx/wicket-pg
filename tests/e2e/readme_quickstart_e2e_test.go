@@ -31,12 +31,15 @@ const readmePath = "README.md"
 // TestE2EReadmeInstallCommandPinsRealModule verifies AC-1: the install
 // command uses the GOWORK=off form (the external workspace would otherwise
 // shadow the module) and names the module path and version that go.mod
-// actually declares.
+// actually declares. The pinned version is v0.1.1: v0.1.0's first tag
+// pointed at a pre-revert tree that the module proxy cached, so consumers
+// fetching it got a broken go 1.27 directive; v0.1.1 is the consumable
+// release (see story 3-2 Review Findings).
 func TestE2EReadmeInstallCommandPinsRealModule(t *testing.T) {
 	readme := readFile(t, filepath.Join(repoRoot(t), readmePath))
 
-	if !strings.Contains(readme, "GOWORK=off go get github.com/gonewx/wicket-pg@v0.1.0") {
-		t.Error("README must show the install command 'GOWORK=off go get github.com/gonewx/wicket-pg@v0.1.0'")
+	if !strings.Contains(readme, "GOWORK=off go get github.com/gonewx/wicket-pg@v0.1.1") {
+		t.Error("README must show the install command 'GOWORK=off go get github.com/gonewx/wicket-pg@v0.1.1'")
 	}
 
 	goMod := readFile(t, filepath.Join(repoRoot(t), "go.mod"))
