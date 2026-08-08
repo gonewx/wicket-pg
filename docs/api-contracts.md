@@ -10,7 +10,7 @@
 | `migrations` | `github.com/gonewx/wicket-pg/migrations` | schema 迁移入口 |
 | `tests/conformance` | `github.com/gonewx/wicket-pg/tests/conformance` | 契约套件接入（测试用，宿主一般不需要） |
 
-依赖：`github.com/gonewx/wicket v0.1.2`（端口、哨兵错误、套件）、`github.com/jackc/pgx/v5 v5.10.0`。
+依赖：`github.com/gonewx/wicket v0.1.3`（v0.1.3 起 ClaimsIdentity JSON 回环无损，此前版本的 codec 会丢 subject claims）、`github.com/jackc/pgx/v5 v5.10.0`。
 
 ## 二、store 包
 

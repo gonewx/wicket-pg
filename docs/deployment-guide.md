@@ -51,7 +51,7 @@ git push origin v0.1.1
 
 4. **发版纪律**：
    - tag 携带 rc 的 Go directive 之前，版本标记需与工具链状态同步（首个 tag 不得携带 rc directive 的红线：Go 1.27 正式版发布后，`go.mod` 的 `go 1.27rc1` 与 `ci.yml` 的 `1.27.0-rc.1` **两处同步去 rc**）。
-   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译——文档只引用 v0.1.1。
+   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译——文档只引用 v0.1.2。
    - 提交信息保持功能中性（门禁扫全量 git 历史）。
 
 ## 四、远端操作注意事项
@@ -68,7 +68,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 
 本仓是库不是服务，无 Dockerfile / K8s 清单——「部署」即宿主集成：
 
-1. 宿主 `go get github.com/gonewx/wicket-pg@v0.1.1`；
+1. 宿主 `go get github.com/gonewx/wicket-pg@v0.1.2`；
 2. 启动序列中调用 `migrations.Up(ctx, pool)`（幂等）；
 3. 构造九个 store 注入 wicket，装配期调用各 store 的 `ConformsTo()` 比对套件版本。
 

@@ -79,4 +79,4 @@ logger.Debug("token lookup", "handle", handle)                          // ❌
 ## 七、发布纪律（与贡献相关）
 
 - Go 1.27 正式版发布后，`go.mod` 的 `go 1.27rc1` 与 `ci.yml` 的 `1.27.0-rc.1` **两处同步去 rc**——首个 tag 不得携带 rc directive。
-- 文档引用版本只引 v0.1.1（v0.1.0 因分发层分裂不可用）。
+- 文档引用版本只引 v0.1.2（v0.1.0 因分发层分裂不可用）。
