@@ -4,11 +4,11 @@ PostgreSQL storage adapter for [wicket](https://github.com/gonewx/wicket).
 
 ## Status
 
-The adapter implementation is complete: all nine store types, the migrations entry point, and the conformance contract suites are in place and passing. v0.1.0 is released.
+The adapter implementation is complete: all nine store types, the migrations entry point, and the conformance contract suites are in place and passing. v0.1.0 and v0.1.1 are released (use v0.1.1; v0.1.0 is unusable through the default Go module proxy due to a distribution split).
 
 ## Prerequisites
 
-- wicket v0.1.x
+- wicket v0.1.x (this module requires wicket v0.1.2)
 - PostgreSQL 15+
 - Go 1.27+ (v0.1.x releases carry a prerelease go directive, `go 1.27rc1`, pending Go 1.27.0 stable — hosts on stable toolchains need GOTOOLCHAIN auto-download)
 

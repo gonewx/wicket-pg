@@ -1,0 +1,112 @@
+{
+  "workflow_version": "1.2.0",
+  "timestamps": {
+    "started": "2026-08-08T20:30:00+08:00",
+    "last_updated": "2026-08-08T20:30:00+08:00"
+  },
+  "mode": "full_rescan",
+  "scan_level": "deep",
+  "project_root": "/mnt/disk0/project/auth/wicket-pg",
+  "project_knowledge": "/mnt/disk0/project/auth/wicket-pg/docs",
+  "completed_steps": [
+    {
+      "step": "step_1",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Classified as monolith, 1 part (Go library), project_type_id=library"
+    },
+    {
+      "step": "step_2",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Found 2 existing docs (HANDOFF.md, schema-design-record.md) + README/PROVENANCE"
+    },
+    {
+      "step": "step_3",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Tech stack: Go 1.27rc1, pgx/v5 v5.10.0, wicket v0.1.2, PostgreSQL 15+, yaml.v3 (test-only)"
+    },
+    {
+      "step": "step_4",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Conditional analysis complete: data-models (10 tables/15 indexes), API surface (9 stores + migrations), tests (123 functions)"
+    },
+    {
+      "step": "step_5",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Source tree documented"
+    },
+    {
+      "step": "step_6",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Dev setup (GOWORK=off) and CI pipeline documented"
+    },
+    {
+      "step": "step_8",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Architecture doc written"
+    },
+    {
+      "step": "step_9",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "All supporting docs written (overview, tree, data-models, dev, deploy, contribution, api-contracts)"
+    },
+    {
+      "step": "step_10",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Master index generated"
+    },
+    {
+      "step": "step_11",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Validation and review complete - no incomplete markers; README and project-context.md updated"
+    },
+    {
+      "step": "step_12",
+      "status": "completed",
+      "timestamp": "2026-08-08T20:30:00+08:00",
+      "summary": "Workflow complete"
+    }
+  ],
+  "current_step": "completed",
+  "findings": {
+    "project_classification": "monolith, 1 part, Go 1.27rc1 library (module github.com/gonewx/wicket-pg)",
+    "technology_stack": "Go library; pgx/v5 native driver; wicket v0.1.2 port dependency; PostgreSQL 15+",
+    "architecture_pattern": "ports & adapters (hexagonal) - single-package adapter + minimal real columns / payload single column",
+    "APIs": "9 store constructors + methods, migrations.Up/Down, ConformsTo() x9",
+    "Data": "10 tables (9 business + schema_migrations), 15 explicit indexes",
+    "Components": "N/A (library, no UI)",
+    "Tests": "123 test functions across lineage/conformance/e2e/unit"
+  },
+  "outputs_generated": [
+    "project-scan-report.json",
+    "index.md",
+    "project-overview.md",
+    "architecture.md",
+    "source-tree-analysis.md",
+    "data-models.md",
+    "development-guide.md",
+    "deployment-guide.md",
+    "contribution-guide.md",
+    "api-contracts.md",
+    "README.md (updated)",
+    "_bmad-output/project-context.md (updated)",
+    "HANDOFF.md (completion banner added)"
+  ],
+  "project_types": [
+    {
+      "part_id": "wicket-pg",
+      "project_type_id": "library",
+      "display_name": "Go Library (PostgreSQL storage adapter)"
+    }
+  ],
+  "resume_instructions": "Workflow complete; no resume needed. To refresh docs, archive this file to docs/.archive/ and rerun bmad-document-project."
+}
