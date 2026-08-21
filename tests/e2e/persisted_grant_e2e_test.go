@@ -35,7 +35,7 @@ func TestE2EPersistedGrantLifecycle(t *testing.T) {
 	}
 	s := store.NewPersistedGrantStore(pool, discardLogger())
 
-	expiration := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	expiration := fixedAlive
 	grant := &models.PersistedGrant{
 		Key:          "grant-lifecycle",
 		Type:         "refresh_token",
@@ -43,7 +43,7 @@ func TestE2EPersistedGrantLifecycle(t *testing.T) {
 		SessionId:    "session-lifecycle",
 		ClientId:     "client-a",
 		Description:  "test grant",
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 		Expiration:   &expiration,
 		Data:         []byte("grant-data"),
 	}
@@ -142,8 +142,7 @@ func TestE2EPersistedGrantRemoveExpiredCounting(t *testing.T) {
 	}
 	s := store.NewPersistedGrantStore(pool, discardLogger())
 
-	fixedNow := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
-	expired := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	expired := fixedExpired
 	boundary := fixedNow
 	base := models.PersistedGrant{
 		Type:         "refresh_token",
@@ -217,7 +216,7 @@ func TestE2EPersistedGrantUpsertRefreshesFilterColumns(t *testing.T) {
 		SubjectId:    "subject-A",
 		SessionId:    "session-A",
 		ClientId:     "client-a",
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 		Data:         []byte("first"),
 	}
 	if err := s.Store(t.Context(), &base); err != nil {
@@ -275,14 +274,14 @@ func TestE2EPersistedGrantExpiryColumn(t *testing.T) {
 	}
 	s := store.NewPersistedGrantStore(pool, discardLogger())
 
-	instant := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	instant := fixedAlive
 	grant := &models.PersistedGrant{
 		Key:          "grant-e2e",
 		Type:         "refresh_token",
 		SubjectId:    "subject-e2e",
 		SessionId:    "session-e2e",
 		ClientId:     "client-e2e",
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 		Expiration:   &instant,
 	}
 	if err := s.Store(t.Context(), grant); err != nil {
@@ -308,14 +307,14 @@ func TestE2EPersistedGrantUpsertRefreshesExpiry(t *testing.T) {
 	}
 	s := store.NewPersistedGrantStore(pool, discardLogger())
 
-	alive := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	alive := fixedAlive
 	base := &models.PersistedGrant{
 		Key:          "grant-upsert-expiry",
 		Type:         "refresh_token",
 		SubjectId:    "subject-upsert",
 		SessionId:    "session-upsert",
 		ClientId:     "client-upsert",
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 	}
 
 	// Expiry first, then nil: the stale expiry must not survive the second
@@ -357,7 +356,7 @@ func TestE2EPersistedGrantMultiValueFilter(t *testing.T) {
 		Type:         "refresh_token",
 		SubjectId:    "subject-multi",
 		SessionId:    "session-multi",
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 	}
 	grants := []struct {
 		key    string
@@ -439,7 +438,7 @@ func TestE2EPersistedGrantRemoveAllNoMatchIsNoOp(t *testing.T) {
 		SubjectId:    "subject-keep",
 		SessionId:    "session-keep",
 		ClientId:     "client-keep",
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 	}
 	if err := s.Store(t.Context(), grant); err != nil {
 		t.Fatalf("Store: %v", err)

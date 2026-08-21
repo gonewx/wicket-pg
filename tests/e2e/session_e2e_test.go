@@ -113,9 +113,9 @@ func TestE2ESessionClientIDsColumnBehavior(t *testing.T) {
 	s := store.NewSessionStore(pool, discardLogger())
 
 	nilClients := &session.Record{
-		SessionID:  "sess-cli-nil",
-		ClientIDs:  nil,
-		Expires:    fixedAlive,
+		SessionID:   "sess-cli-nil",
+		ClientIDs:   nil,
+		Expires:     fixedAlive,
 		DisplayName: "nil clients",
 	}
 	if err := s.CreateSession(t.Context(), nilClients); err != nil {

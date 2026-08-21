@@ -86,10 +86,18 @@ func NewStore[T any](t *testing.T, construct func(pool *pgxpool.Pool, logger *sl
 		// Teardown runs once the whole test (including parallel subtests)
 		// finishes; t.Context() is already canceled there, so the drop uses
 		// a fresh context. DROP SCHEMA resolves by name, so the management
-		// pool can execute it regardless of its own search_path.
+		// pool can execute it regardless of its own search_path. Cleanups run
+		// LIFO, so the management pool registered above is still open here.
+		//
+		// A failed drop is reported rather than panicked: panicking mid-cleanup
+		// would skip the remaining schemas' teardown and leak more than it
+		// reports. Silence is not an option either — a drop that keeps failing
+		// accumulates dead schemas in the test database run after run.
 		t.Cleanup(func() {
 			pool.Close()
-			admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+name+" CASCADE")
+			if _, err := admin.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+name+" CASCADE"); err != nil {
+				t.Errorf("conformance: drop schema %s: %v", name, err)
+			}
 		})
 
 		if err := migrations.Up(t.Context(), pool); err != nil {

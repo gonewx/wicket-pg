@@ -31,7 +31,7 @@ func TestE2EReferenceTokenExpiryColumn(t *testing.T) {
 	}
 	s := store.NewReferenceTokenStore(pool, discardLogger())
 
-	creation := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	creation := fixedNow
 
 	const handle = "e2e-ref-token-1"
 	if err := s.StoreReferenceToken(t.Context(), handle, &models.Token{

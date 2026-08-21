@@ -40,6 +40,25 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// Fixed time bases shared by every e2e case, mirroring the conformance
+// suite's base so column assertions share its determinism. They live here
+// rather than in whichever store file happened to need one first: the same
+// three instants were previously re-derived as literals across ten files
+// under six different local names, and two of them sat in business-store
+// files that other files had to point at by comment.
+//
+// The adapter never reads a clock — expiry decisions belong to the core with
+// an injected clock — so these tests pin explicit instants and assert stored
+// columns against them. The ordering fixedExpired < fixedNow < fixedAlive is
+// the contract: a cutoff at fixedAlive must reclaim a record built from
+// fixedExpired and spare one that expires after it.
+var (
+	fixedNow      = time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	fixedMidnight = time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	fixedAlive    = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	fixedExpired  = time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+)
+
 // TestE2EDuplicateErrorMappingPremise proves the 23505 premise of
 // mapDuplicateErr with genuine constraint violations: a primary-key
 // collision on authorization_codes and the partial unique index on

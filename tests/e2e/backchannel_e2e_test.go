@@ -23,14 +23,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// fixedAlive and fixedExpired mirror the conformance suite's fixed time
-// base so the column assertions share its determinism; fixedNow is defined
-// in device_flow_e2e_test.go.
-var (
-	fixedAlive   = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	fixedExpired = time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-)
-
 // TestE2EBackchannelExpiresAtColumn asserts the ExpirationTime-family expiry
 // semantics directly at the column level: a non-zero ExpirationTime lands in
 // expires_at as-is, while a zero ExpirationTime lands as NULL (never

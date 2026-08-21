@@ -37,7 +37,7 @@ func TestE2EAuthorizationCodeLifecycle(t *testing.T) {
 	s := store.NewAuthorizationCodeStore(pool, discardLogger())
 
 	code := &models.AuthorizationCode{
-		CreationTime:    time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime:    fixedNow,
 		Lifetime:        300,
 		ClientId:        "client-e2e",
 		IsOpenId:        true,
@@ -101,12 +101,12 @@ func TestE2EAuthorizationCodeDuplicateHandleRejected(t *testing.T) {
 	s := store.NewAuthorizationCodeStore(pool, discardLogger())
 
 	first := &models.AuthorizationCode{
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 		Lifetime:     60,
 		ClientId:     "client-first",
 	}
 	second := &models.AuthorizationCode{
-		CreationTime: time.Date(2026, 8, 1, 13, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow.Add(time.Hour),
 		Lifetime:     60,
 		ClientId:     "client-second",
 	}
@@ -141,7 +141,7 @@ func TestE2EAuthorizationCodeExpiresAtDerivedAtWrite(t *testing.T) {
 	}
 	s := store.NewAuthorizationCodeStore(pool, discardLogger())
 
-	creation := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	creation := fixedNow
 
 	if err := s.StoreAuthorizationCode(t.Context(), "e2e-exp-zero", &models.AuthorizationCode{
 		CreationTime: creation,
@@ -174,7 +174,6 @@ func TestE2EAuthorizationCodeRemoveExpiredBoundaries(t *testing.T) {
 	}
 	s := store.NewAuthorizationCodeStore(pool, discardLogger())
 
-	fixedNow := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 	codes := []struct {
 		handle   string
 		creation time.Time

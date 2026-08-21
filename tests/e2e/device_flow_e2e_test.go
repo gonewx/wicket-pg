@@ -23,10 +23,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// fixedNow mirrors the conformance suite's fixed time base so the column
-// assertions share its determinism.
-var fixedNow = time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
-
 // TestE2EDeviceFlowDualCodeColumns asserts the dual-code single-row shape
 // directly at the column level: the device code lands in handle (the
 // primary key), the user code in user_code, both on the same row — one row

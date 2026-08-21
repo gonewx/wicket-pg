@@ -35,12 +35,12 @@ func TestE2EUserConsentLifecycle(t *testing.T) {
 	}
 	s := store.NewUserConsentStore(pool, discardLogger())
 
-	expiration := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	expiration := fixedAlive
 	consent := &models.Consent{
 		SubjectId:    "subject-lifecycle",
 		ClientId:     "client-a",
 		Scopes:       []string{"openid", "profile"},
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 		Expiration:   &expiration,
 	}
 	if err := s.StoreUserConsent(t.Context(), consent); err != nil {
@@ -139,8 +139,7 @@ func TestE2EUserConsentRemoveExpiredCounting(t *testing.T) {
 	}
 	s := store.NewUserConsentStore(pool, discardLogger())
 
-	fixedNow := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
-	expired := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	expired := fixedExpired
 	boundary := fixedNow
 	base := models.Consent{
 		SubjectId:    "subject-cleanup",
@@ -204,12 +203,12 @@ func TestE2EUserConsentExpiryColumn(t *testing.T) {
 	}
 	s := store.NewUserConsentStore(pool, discardLogger())
 
-	instant := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	instant := fixedAlive
 	consent := &models.Consent{
 		SubjectId:    "subject-e2e",
 		ClientId:     "client-e2e",
 		Scopes:       []string{"openid"},
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 		Expiration:   &instant,
 	}
 	if err := s.StoreUserConsent(t.Context(), consent); err != nil {
@@ -234,12 +233,12 @@ func TestE2EUserConsentUpsertRefreshesExpiry(t *testing.T) {
 	}
 	s := store.NewUserConsentStore(pool, discardLogger())
 
-	alive := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	alive := fixedAlive
 	base := &models.Consent{
 		SubjectId:    "subject-upsert",
 		ClientId:     "client-upsert",
 		Scopes:       []string{"openid"},
-		CreationTime: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
+		CreationTime: fixedNow,
 	}
 
 	// Expiry first, then nil: the stale expiry must not survive the second

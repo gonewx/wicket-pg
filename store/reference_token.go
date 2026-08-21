@@ -91,7 +91,7 @@ func (s *ReferenceTokenStore) RemoveReferenceTokens(ctx context.Context, subject
 	rows, err := s.pool.Query(ctx,
 		"SELECT handle, payload FROM reference_tokens")
 	if err != nil {
-		return fmt.Errorf("scan reference tokens for revocation: %w", err)
+		return fmt.Errorf("query reference tokens for revocation: %w", err)
 	}
 	defer rows.Close()
 
@@ -111,7 +111,7 @@ func (s *ReferenceTokenStore) RemoveReferenceTokens(ctx context.Context, subject
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("scan reference tokens for revocation: %w", err)
+		return fmt.Errorf("iterate reference tokens for revocation: %w", err)
 	}
 	if len(handles) == 0 {
 		return nil

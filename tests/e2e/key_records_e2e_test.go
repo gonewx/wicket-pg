@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/gonewx/wicket-pg/migrations"
 	"github.com/gonewx/wicket-pg/store"
@@ -239,7 +238,7 @@ func newKeyRecordE2E(handle, publicID string) *keymgmt.Record {
 		Purpose:                  keymgmt.PurposeTokenSigning,
 		Algorithm:                "RS256",
 		Phase:                    keymgmt.PhaseActive,
-		CreatedAt:                time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+		CreatedAt:                fixedMidnight,
 		PublicMaterial:           []byte("public-bytes"),
 		ProtectedPrivateMaterial: []byte("private-bytes"),
 	}

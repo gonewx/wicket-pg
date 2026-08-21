@@ -33,7 +33,7 @@ func TestE2ERefreshTokenVersionAndExpiryColumns(t *testing.T) {
 	}
 	s := store.NewRefreshTokenStore(pool, discardLogger())
 
-	creation := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	creation := fixedNow
 
 	token := &models.RefreshToken{
 		CreationTime: creation,
@@ -72,7 +72,7 @@ func TestE2ERefreshTokenZeroLifetimeColumn(t *testing.T) {
 	}
 	s := store.NewRefreshTokenStore(pool, discardLogger())
 
-	creation := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	creation := fixedNow
 	if err := s.StoreRefreshToken(t.Context(), "e2e-refresh-zero", &models.RefreshToken{
 		CreationTime: creation,
 		Lifetime:     0,
