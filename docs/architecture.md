@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart LR
-    subgraph wicket["wicket（端口定义方，只读依赖 v0.1.3）"]
+    subgraph wicket["wicket（端口定义方，只读依赖 v0.1.4）"]
         P1["storage 端口族<br/>AuthorizationCodeStore 等七口"]
         P2["session.Store"]
         P3["keymgmt.RecordStore"]
@@ -153,5 +153,5 @@ flowchart LR
 
 ## 八、依赖与演进
 
-- 依赖树全部是已发布版本（wicket v0.1.3、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
-- 已识别风险（deferred-work 留档）：并发 `Up` 无 advisory lock（多实例并发启动 PK 冲突）；`schema_migrations` 表名与 golang-migrate 默认表同名冲突；`go 1.27rc1` directive 对 dependabot/gopls 的生态摩擦（Go 1.27.0 发布后自愈）。
+- 依赖树全部是已发布版本（wicket v0.1.4、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
+- 已识别风险（deferred-work 留档）：并发 `Up` 无 advisory lock（多实例并发启动 PK 冲突）；`schema_migrations` 表名与 golang-migrate 默认表同名冲突。`go 1.27rc1` directive 对 dependabot/gopls 的生态摩擦已消除（Go 1.27.0 发布后两处去 rc，2026-08-21）。

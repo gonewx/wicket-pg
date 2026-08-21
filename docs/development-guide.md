@@ -6,7 +6,7 @@
 
 | 依赖 | 要求 | 说明 |
 |---|---|---|
-| Go | 1.27+（`go.mod` 为 `go 1.27rc1`，稳定工具链需 GOTOOLCHAIN 自动下载或手动装 1.27） | CI pin `1.27.0-rc.1` |
+| Go | 1.27+（`go.mod` 为 `go 1.27`，是对下游的语言版本承诺，不带补丁号） | CI pin `1.27.0`（本仓构建环境，取精确补丁版） |
 | PostgreSQL | 15+（跑契约套件与 e2e 才需要） | 单测与门禁不需要数据库 |
 | 无 | — | 开发零外部工具：迁移不依赖 CLI，门禁只用标准库 |
 
@@ -96,4 +96,4 @@ GOWORK=off go test ./tests/e2e/...
 
 - 门禁探针子进程无显式超时；Windows 下 `go test -c` 产物无 `.exe` 后缀（CI 为 Linux，潜伏问题）。
 - 迁移并发 `Up` 无 advisory lock。
-- `go 1.27rc1` directive 对 dependabot/gopls 的摩擦（Go 1.27.0 发布后自愈；届时 `go.mod` 与 `ci.yml` 两处同步去 rc）。
+- ~~`go 1.27rc1` directive 对 dependabot/gopls 的摩擦~~ —— 已消除：Go 1.27.0 发布后 `go.mod` 与 `ci.yml` 两处已去 rc（2026-08-21）。

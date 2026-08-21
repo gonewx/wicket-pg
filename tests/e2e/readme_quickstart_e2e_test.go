@@ -28,24 +28,41 @@ import (
 
 const readmePath = "README.md"
 
+// wantReleaseVersion is the release this README documents. v0.1.3 is the first
+// release whose go directive names the Go 1.27.0 release instead of a
+// prerelease; v0.1.1 and v0.1.2 remain consumable but still carry the rc
+// directive, and published tags are immutable.
+const wantReleaseVersion = "v0.1.3"
+
 // TestE2EReadmeInstallCommandPinsRealModule verifies AC-1: the install
 // command uses the GOWORK=off form (the external workspace would otherwise
 // shadow the module) and names the module path and version that go.mod
-// actually declares. The pinned version is v0.1.2: v0.1.0's first tag
-// pointed at a pre-revert tree that the module proxy cached, so consumers
-// fetching it got a broken go 1.27 directive; v0.1.2 is the consumable
-// release (see story 3-2 Review Findings).
+// actually declares. v0.1.0's first tag pointed at a pre-revert tree that the
+// module proxy cached, so consumers fetching it got a broken go 1.27 directive
+// (see story 3-2 Review Findings) — which is why the documented version is
+// asserted here rather than left to drift.
 func TestE2EReadmeInstallCommandPinsRealModule(t *testing.T) {
 	readme := readFile(t, filepath.Join(repoRoot(t), readmePath))
+	goMod := readFile(t, filepath.Join(repoRoot(t), "go.mod"))
 
-	if !strings.Contains(readme, "GOWORK=off go get github.com/gonewx/wicket-pg@v0.1.2") {
-		t.Error("README must show the install command 'GOWORK=off go get github.com/gonewx/wicket-pg@v0.1.2'")
+	// Built from the module path go.mod actually declares, and anchored on a
+	// word boundary: a bare substring check would also accept @v0.1.30 or
+	// @v0.1.3-rc.1, letting a prerelease or an unrelated release satisfy it.
+	install := "GOWORK=off go get " + modulePathOf(t, goMod) + "@" + wantReleaseVersion
+	if !regexp.MustCompile(regexp.QuoteMeta(install) + `(\s|$)`).MatchString(readme) {
+		t.Errorf("README must show the install command %q", install)
 	}
 
-	goMod := readFile(t, filepath.Join(repoRoot(t), "go.mod"))
-	modulePath := modulePathOf(t, goMod)
-	if !strings.Contains(readme, "go get "+modulePath) {
-		t.Errorf("README install command does not name the real module path %s", modulePath)
+	// The Status and Prerequisites sections name the version too. Without
+	// these, only the install command would move on a release and the document
+	// would advertise one version while installing another.
+	for _, claim := range []string{
+		"use " + wantReleaseVersion,
+		"from " + wantReleaseVersion + " onward",
+	} {
+		if !strings.Contains(readme, claim) {
+			t.Errorf("README must carry the version claim %q", claim)
+		}
 	}
 }
 

@@ -8,7 +8,7 @@ wicket-pg 是 [wicket](https://github.com/gonewx/wicket)（OAuth 授权服务器
 
 - **独立项目**：自备 LICENSE（MIT）、PROVENANCE（独立创作声明）、血缘门禁、migrations 与 CI；不是 wicket 的子目录。
 - **独立创作**：实现依赖 wicket 的**公开 API 契约**（端口接口、哨兵错误、契约套件），但不复制、不改编其实现；schema 从端口读写模式独立推导，不照搬上游表结构与实体划分。
-- **平级依赖**：通过 `require github.com/gonewx/wicket v0.1.2` 接入，不用 go.work 搭桥。
+- **平级依赖**：通过 `require github.com/gonewx/wicket v0.1.4` 接入，不用 go.work 搭桥。
 
 ## 当前状态
 
@@ -19,14 +19,14 @@ wicket-pg 是 [wicket](https://github.com/gonewx/wicket)（OAuth 授权服务器
 | 契约套件接入 | ✅ 三组套件全部 MUST 级用例绿（storagetest / sessiontest / keymgmttest） |
 | 血缘门禁 | ✅ 三项全绿，判别力经探针自证 |
 | CI | ✅ 三 job（lineage-gates → build、conformance）合并阻塞 |
-| 发布 | ✅ `v0.1.0`、`v0.1.1` tag 已打（**推荐 v0.1.1**；v0.1.0 因分发层分裂不推荐引用） |
+| 发布 | ✅ `v0.1.0`、`v0.1.1`、`v0.1.2`、`v0.1.3` tag 已打（**推荐 v0.1.3**，首个不携带 rc directive 的版本；v0.1.0 因分发层分裂不推荐引用） |
 
 ## 技术栈
 
 | 类别 | 技术 | 版本 | 说明 |
 |---|---|---|---|
-| 语言 | Go | `1.27rc1`（CI pin `1.27.0-rc.1`） | 首个 tag 不携带 rc directive 的红线要求 1.27 正式版发布后同步去 rc |
-| 核心依赖 | wicket | v0.1.2 | 端口接口、哨兵错误、契约套件入口，只读依赖 |
+| 语言 | Go | `1.27`（CI pin `1.27.0`） | directive 是对下游的语言版本承诺（不带补丁号），CI pin 是本仓构建环境（取精确补丁版）；rc 已于 Go 1.27.0 发布后去除，v0.1.3 起 tag 不携带 rc directive |
+| 核心依赖 | wicket | v0.1.4 | 端口接口、哨兵错误、契约套件入口，只读依赖 |
 | 数据库驱动 | pgx/v5 | v5.10.0 | 原生 `pgxpool.Pool` 接口，不经 `database/sql` |
 | 测试依赖 | yaml.v3 | v3.0.1 | 仅 `tests/e2e/ci_job_e2e_test.go`（CI 配置静态断言） |
 | 数据库 | PostgreSQL | 15+ | CI 用 `postgres:15` service 容器 |

@@ -15,8 +15,8 @@ flowchart TD
 
 | Job | 做什么 | 环境 |
 |---|---|---|
-| `lineage-gates` | 三项血缘门禁（版权头 / 零上游标注 / 中性提交信息） | Go `1.27.0-rc.1` |
-| `build` | `go build ./...` + `go test ./...`（无库测试自动 skip） | Go `1.27.0-rc.1`，`needs: lineage-gates` |
+| `lineage-gates` | 三项血缘门禁（版权头 / 零上游标注 / 中性提交信息） | Go `1.27.0` |
+| `build` | `go build ./...` + `go test ./...`（无库测试自动 skip） | Go `1.27.0`，`needs: lineage-gates` |
 | `conformance` | 三组契约套件（grant 族 7 口 + session + keymgmt）对真实 PG 跑，30 分钟超时 | `postgres:15` service 容器，`WICKET_PG_TEST_DATABASE_URL` 注入 |
 
 设计要点：
@@ -45,13 +45,13 @@ WICKET_PG_TEST_DATABASE_URL=... GOWORK=off go test ./tests/conformance/...  # = 
 3. **打 tag**（轻量 tag）：
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 4. **发版纪律**：
-   - tag 携带 rc 的 Go directive 之前，版本标记需与工具链状态同步（首个 tag 不得携带 rc directive 的红线：Go 1.27 正式版发布后，`go.mod` 的 `go 1.27rc1` 与 `ci.yml` 的 `1.27.0-rc.1` **两处同步去 rc**）。
-   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译——文档只引用 v0.1.2。
+   - **Go 版本标记两处形态不同且各自精确**：`go.mod` 的 `go 1.27` 是对下游的语言版本承诺（不带补丁号），`ci.yml` 的 `1.27.0` 是本仓构建环境 pin（取精确补丁版）。rc 已于 Go 1.27.0 发布后去除，`tests/e2e/ci_job_e2e_test.go` 分别精确比对两者，预发布值一律不得通过。
+   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译；v0.1.1 与 v0.1.2 可用但仍携带 rc directive——文档只引用 v0.1.3（首个不携带 rc directive 的版本）。
    - 提交信息保持功能中性（门禁扫全量 git 历史）。
 
 ## 四、远端操作注意事项
@@ -68,7 +68,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 
 本仓是库不是服务，无 Dockerfile / K8s 清单——「部署」即宿主集成：
 
-1. 宿主 `go get github.com/gonewx/wicket-pg@v0.1.2`；
+1. 宿主 `go get github.com/gonewx/wicket-pg@v0.1.3`；
 2. 启动序列中调用 `migrations.Up(ctx, pool)`（幂等）；
 3. 构造九个 store 注入 wicket，装配期调用各 store 的 `ConformsTo()` 比对套件版本。
 

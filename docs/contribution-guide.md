@@ -78,5 +78,5 @@ logger.Debug("token lookup", "handle", handle)                          // ❌
 
 ## 七、发布纪律（与贡献相关）
 
-- Go 1.27 正式版发布后，`go.mod` 的 `go 1.27rc1` 与 `ci.yml` 的 `1.27.0-rc.1` **两处同步去 rc**——首个 tag 不得携带 rc directive。
-- 文档引用版本只引 v0.1.2（v0.1.0 因分发层分裂不可用）。
+- **Go 版本标记两处形态不同，改动须成对**：`go.mod` 的 `go 1.27` 是对下游的语言版本承诺（不带补丁号），`ci.yml` 的 `1.27.0` 是本仓构建环境 pin（取精确补丁版）。rc 已于 Go 1.27.0 发布后去除；`tests/e2e/ci_job_e2e_test.go` 分别精确比对两者，任何预发布值都不得通过。
+- 文档引用版本只引 v0.1.3（首个不携带 rc directive 的版本；v0.1.0 因分发层分裂不可用，v0.1.1 / v0.1.2 可用但仍携带 rc directive）。

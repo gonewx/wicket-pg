@@ -55,6 +55,22 @@ type step struct {
 
 const ciWorkflowPath = ".github/workflows/ci.yml"
 
+// The two Go version markers are deliberately different shapes. The go.mod
+// directive is the language-version promise that ships to consumers, so it
+// carries no patch number. The CI pin is this repo's build environment, which
+// does not ship, so it names an exact patch release — every toolchain move is
+// then a recorded change rather than a silent drift. A prerelease value in
+// either place must fail the suite: no tag may carry an rc directive.
+const (
+	wantGoDirective    = "1.27"
+	wantCIToolchainPin = "1.27.0"
+
+	// Matched by prefix, never by exact version: pinning the assertion to a
+	// single action release meant a routine dependabot upgrade would skip
+	// every step and let a prerelease pin back in with the suite still green.
+	setupGoActionPrefix = "actions/setup-go@"
+)
+
 // TestE2EConformanceJobUsesPostgresServiceContainer verifies AC-1: the
 // conformance job provisions its database through a postgres:15 service
 // container with a pg_isready health check and the port published to the
@@ -188,8 +204,8 @@ func TestE2EConformanceJobFailurePropagates(t *testing.T) {
 
 // TestE2EConformanceJobOrderAndVersionPins verifies AC-4: the conformance
 // job runs after lineage-gates (build's existing dependency unchanged), no
-// run block interpolates event-supplied text, and the setup-go version pin
-// stays paired with the go.mod directive.
+// run block interpolates event-supplied text, and both Go version markers
+// hold their expected exact values.
 func TestE2EConformanceJobOrderAndVersionPins(t *testing.T) {
 	raw, _ := readCIWorkflow(t)
 
@@ -212,18 +228,47 @@ func TestE2EConformanceJobOrderAndVersionPins(t *testing.T) {
 
 	root := repoRoot(t)
 	goMod := readFile(t, filepath.Join(root, "go.mod"))
+
+	// The expected values are themselves part of the contract: a prerelease
+	// here would make every assertion below agree with a tag that must not
+	// exist, and the pin must stay a patch release of the directive's minor —
+	// otherwise the two constants drift apart, go.mod promising one minor
+	// while CI builds with another, and everything still passes.
+	for _, v := range []string{wantGoDirective, wantCIToolchainPin} {
+		if strings.ContainsAny(v, "-+") || strings.Contains(v, "rc") || strings.Contains(v, "beta") {
+			t.Fatalf("expected version %q is a prerelease; no tag may carry one", v)
+		}
+	}
+	if !strings.HasPrefix(wantCIToolchainPin, wantGoDirective+".") {
+		t.Fatalf("CI pin %q is not a patch release of directive %q", wantCIToolchainPin, wantGoDirective)
+	}
+
+	pins := 0
 	for name, j := range raw.Jobs {
 		for _, s := range j.Steps {
-			if s.Uses != "actions/setup-go@v5" {
+			if !strings.HasPrefix(s.Uses, setupGoActionPrefix) {
 				continue
 			}
-			if got := s.With["go-version"]; got != "1.27.0-rc.1" {
-				t.Errorf("job %s setup-go go-version = %q, want '1.27.0-rc.1'", name, got)
+			pins++
+			if got := s.With["go-version"]; got != wantCIToolchainPin {
+				t.Errorf("job %s setup-go go-version = %q, want %q", name, got, wantCIToolchainPin)
 			}
 		}
 	}
-	if !strings.Contains(goMod, "go 1.27rc1") {
-		t.Error("go.mod must carry the 'go 1.27rc1' directive paired with the CI pin")
+	// Every job pins its own toolchain, so zero inspected steps means the loop
+	// above passed vacuously rather than agreeing with anything.
+	if pins < len(raw.Jobs) {
+		t.Errorf("workflow has %d jobs but only %d setup-go pins; every job must pin the toolchain",
+			len(raw.Jobs), pins)
+	}
+
+	if got := goDirectiveOf(t, goMod); got != wantGoDirective {
+		t.Errorf("go.mod go directive = %q, want %q", got, wantGoDirective)
+	}
+	// A toolchain line is a second, independent route for a prerelease to
+	// reach a published tag, and the directive assertion cannot see it.
+	if got, ok := goModToolchain(goMod); ok && got != wantCIToolchainPin {
+		t.Errorf("go.mod toolchain = %q, want %q or no toolchain line at all", got, wantCIToolchainPin)
 	}
 }
 
@@ -291,4 +336,48 @@ func repoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+// goDirectiveOf returns the version named by go.mod's `go` directive, failing
+// the test when there is none.
+func goDirectiveOf(t *testing.T, goMod string) string {
+	t.Helper()
+	if v, ok := goModDirective(goMod, "go"); ok {
+		return v
+	}
+	t.Fatal("go.mod carries no go directive")
+	return ""
+}
+
+// goModToolchain reports the version named by go.mod's optional `toolchain`
+// line. That line spells its value `go1.27.0`, so the prefix is stripped to
+// make it comparable with a bare version.
+func goModToolchain(goMod string) (string, bool) {
+	v, ok := goModDirective(goMod, "toolchain")
+	if !ok {
+		return "", false
+	}
+	return strings.TrimPrefix(v, "go"), true
+}
+
+// goModDirective returns the single value of a top-level go.mod directive. It
+// reads the line as whole whitespace-separated fields rather than scanning the
+// file for a substring, because a comment mentioning a prerelease — or some
+// other tool's version string — must never be mistaken for a Go version. The
+// go tool also accepts a tab separator, a leading indent, and a trailing
+// comment with no space before it, so all three are handled here. Require-block
+// entries never match because their first field is a module path, and block
+// openers are rejected by the "(" check.
+func goModDirective(goMod, keyword string) (string, bool) {
+	for _, line := range strings.Split(goMod, "\n") {
+		if i := strings.Index(line, "//"); i >= 0 {
+			line = line[:i]
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[0] != keyword || fields[1] == "(" {
+			continue
+		}
+		return fields[1], true
+	}
+	return "", false
 }
