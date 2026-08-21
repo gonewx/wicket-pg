@@ -4,11 +4,24 @@
 package lineage_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
+)
+
+// Subprocess budgets. The inner test timeout is deliberately shorter than
+// the outer context deadline, so a hung gate prints its own stack trace
+// before the context kills it — a context kill on its own leaves no
+// diagnostic. With neither in place, a hung subprocess used to hang on until
+// the outer `go test` default 10-minute timeout fired.
+const (
+	gateSubprocessTimeout = 3 * time.Minute
+	gateInnerTestTimeout  = 2 * time.Minute
 )
 
 // The probe tests below drive the real gates as subprocesses against
@@ -53,9 +66,8 @@ func TestFileHeaderGateDetectsViolation(t *testing.T) {
 	if err := os.Remove(badFile); err != nil {
 		t.Fatalf("Remove %s: %v", badFile, err)
 	}
-	if out, err := runGate(t, repoRoot, "^TestFileHeadersAssertOriginalAuthorship$"); err != nil {
-		t.Errorf("file-header gate stayed red after the violation was removed: %v\n%s", err, out)
-	}
+	out, err = runGate(t, repoRoot, "^TestFileHeadersAssertOriginalAuthorship$")
+	assertGateGreen(t, out, err, "file-header gate", "TestFileHeadersAssertOriginalAuthorship")
 }
 
 // TestMarkerGateDetectsViolation proves that the marker gate turns red
@@ -91,9 +103,8 @@ func TestMarkerGateDetectsViolation(t *testing.T) {
 	if err := os.Remove(badFile); err != nil {
 		t.Fatalf("Remove %s: %v", badFile, err)
 	}
-	if out, err := runGate(t, repoRoot, "^TestNoUpstreamLineageMarkers$"); err != nil {
-		t.Errorf("marker gate stayed red after the violation was removed: %v\n%s", err, out)
-	}
+	out, err = runGate(t, repoRoot, "^TestNoUpstreamLineageMarkers$")
+	assertGateGreen(t, out, err, "marker gate", "TestNoUpstreamLineageMarkers")
 }
 
 // TestCommitGateDetectsViolation proves that the commit-message gate turns
@@ -101,6 +112,7 @@ func TestMarkerGateDetectsViolation(t *testing.T) {
 // amended to a neutral one. The probe builds a throwaway repository in the
 // system temp dir, so the real repository history is never touched.
 func TestCommitGateDetectsViolation(t *testing.T) {
+	requireGit(t)
 	repoRoot := findRepoRoot(t)
 
 	tmpDir, err := os.MkdirTemp("", "lineage-gate-probe-")
@@ -124,8 +136,15 @@ func TestCommitGateDetectsViolation(t *testing.T) {
 	runGit(t, tmpDir, "add", ".")
 	runGitCommit(t, tmpDir, "chore: probe baseline")
 
+	// go test -c honors -o verbatim, so on Windows the binary would land
+	// without the .exe suffix that exec needs in order to start it.
 	gatesBin := filepath.Join(tmpDir, "gates.test")
-	buildCmd := exec.Command("go", "test", "-c", "./tests/lineage", "-o", gatesBin)
+	if runtime.GOOS == "windows" {
+		gatesBin += ".exe"
+	}
+	buildCtx, cancelBuild := context.WithTimeout(t.Context(), gateSubprocessTimeout)
+	defer cancelBuild()
+	buildCmd := exec.CommandContext(buildCtx, "go", "test", "-c", "./tests/lineage", "-o", gatesBin)
 	buildCmd.Dir = repoRoot
 	buildCmd.Env = append(os.Environ(), "GOWORK=off")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
@@ -141,9 +160,8 @@ func TestCommitGateDetectsViolation(t *testing.T) {
 
 	// Green: amending to a neutral message turns the gate green again.
 	runGitAmend(t, tmpDir, "chore: probe neutral")
-	if out, err := runGateBinary(t, gatesBin, tmpDir); err != nil {
-		t.Errorf("commit gate stayed red after the message was neutralized: %v\n%s", err, out)
-	}
+	out, err = runGateBinary(t, gatesBin, tmpDir)
+	assertGateGreen(t, out, err, "commit gate", "TestCommitMessagesStayNeutral")
 }
 
 // assertGateRed fails the probe unless out+err prove the gate actually ran
@@ -159,6 +177,36 @@ func assertGateRed(t *testing.T, out string, err error, gateName, gateTest strin
 	}
 	if !strings.Contains(out, "--- FAIL") || !strings.Contains(out, gateTest) {
 		t.Fatalf("%s subprocess failed without running %s (build or environment failure):\n%s", gateName, gateTest, out)
+	}
+}
+
+// assertGateGreen fails the probe unless out+err prove the gate actually ran
+// and passed. A zero exit status is not enough on its own: the commit gate
+// degrades with t.Skip when git is unavailable, and a skip also exits 0, so a
+// green subprocess can mean the gate inspected nothing at all. Requiring an
+// explicit PASS line for the named test closes that hole — the green half of
+// red-then-green proves as much as the red half does.
+func assertGateGreen(t *testing.T, out string, err error, gateName, gateTest string) {
+	t.Helper()
+	if err != nil {
+		t.Errorf("%s stayed red after the violation was removed: %v\n%s", gateName, err, out)
+		return
+	}
+	if !strings.Contains(out, "--- PASS: "+gateTest) {
+		t.Errorf("%s exited 0 without actually running %s (skipped, or never executed):\n%s",
+			gateName, gateTest, out)
+	}
+}
+
+// requireGit skips the probe when no git binary is on PATH. The gates
+// themselves degrade with t.Skip when git is unavailable, so a probe that
+// cannot reach git proves nothing rather than being broken — matching that
+// degradation keeps probe and gate consistent. A git that exists but
+// misbehaves still fails hard in the runGit helpers below.
+func requireGit(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH; cannot prove commit-gate discrimination")
 	}
 }
 
@@ -187,10 +235,16 @@ func gitEnv(dir string) []string {
 // runGate runs a single gate test as a subprocess from repoRoot and
 // returns its output and error: a non-nil error means the gate turned red,
 // nil means it stayed green. -count=1 defeats the go test result cache,
-// whose key does not cover the probe fixtures.
+// whose key does not cover the probe fixtures. -v exposes the per-test
+// PASS/SKIP lines that assertGateGreen needs.
 func runGate(t *testing.T, repoRoot, gatePattern string) (string, error) {
 	t.Helper()
-	cmd := exec.Command("go", "test", "-count=1", "-run", gatePattern, "./tests/lineage/")
+	ctx, cancel := context.WithTimeout(t.Context(), gateSubprocessTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test",
+		"-count=1", "-v",
+		"-timeout", gateInnerTestTimeout.String(),
+		"-run", gatePattern, "./tests/lineage/")
 	cmd.Dir = repoRoot
 	cmd.Env = append(withoutGitEnv(os.Environ()), "GOWORK=off")
 	out, err := cmd.CombinedOutput()
@@ -198,10 +252,16 @@ func runGate(t *testing.T, repoRoot, gatePattern string) (string, error) {
 }
 
 // runGateBinary runs a compiled gate test binary with cwd set to dir and
-// returns its output and error.
+// returns its output and error. -test.v exposes the per-test PASS/SKIP lines
+// that let assertGateGreen tell a real pass from a skip.
 func runGateBinary(t *testing.T, bin, dir string) (string, error) {
 	t.Helper()
-	cmd := exec.Command(bin, "-test.run", "^TestCommitMessagesStayNeutral$")
+	ctx, cancel := context.WithTimeout(t.Context(), gateSubprocessTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin,
+		"-test.v",
+		"-test.timeout", gateInnerTestTimeout.String(),
+		"-test.run", "^TestCommitMessagesStayNeutral$")
 	cmd.Dir = dir
 	cmd.Env = withoutGitEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
