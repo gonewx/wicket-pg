@@ -59,6 +59,7 @@ logger.Debug("token lookup", "handle", handle)                          // ❌
 - **三组套件不共用夹具**：grant 存储族（7 口）一套、session 一套、keymgmt 一套。
 - **MUST 级全绿；MAY 级默认跳过**（`WithMay(true)` 开启）；未实现的 MAY 级要在文档逐条写明。本仓会话套件不带 `WithMay`（`LazyExpiryReclaimsOnRead` 不可实现，story 1.11 确认）。
 - 测试包用 `_test` 后缀外部测试包形态。
+- **套件覆盖缺口必须主动枚举**：契约套件是上游定义的最低契约，不等于本仓语义的全覆盖。store 型改动必须逐条列出「套件零覆盖的语义点」，并在 `tests/e2e/` 补**直接列断言**（直查真实表列，不经端口方法自证）。典型零覆盖点：`expires_at` 的写时推导、payload 容器的 JSON 形状、部分唯一索引的冲突分支、`client_ids` 的原子追加。套件绿 ≠ 语义对——Epic 1 每个 store story 都在此处发现过缺口。
 - **story 收尾纪律**：置 done 前「全量回归绿 + commit 落库 + git status 与 File List 一致」三件套齐备。
 
 ## 五、代码组织
