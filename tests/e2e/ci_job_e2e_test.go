@@ -32,10 +32,11 @@ type workflow struct {
 }
 
 type job struct {
-	Needs    string             `yaml:"needs"`
-	Services map[string]service `yaml:"services"`
-	Env      map[string]string  `yaml:"env"`
-	Steps    []step             `yaml:"steps"`
+	Needs           string             `yaml:"needs"`
+	Services        map[string]service `yaml:"services"`
+	Env             map[string]string  `yaml:"env"`
+	Steps           []step             `yaml:"steps"`
+	ContinueOnError bool               `yaml:"continue-on-error"`
 }
 
 type service struct {
@@ -46,11 +47,12 @@ type service struct {
 }
 
 type step struct {
-	Uses string            `yaml:"uses"`
-	Name string            `yaml:"name"`
-	Run  string            `yaml:"run"`
-	With map[string]string `yaml:"with"`
-	If   string            `yaml:"if"`
+	Uses            string            `yaml:"uses"`
+	Name            string            `yaml:"name"`
+	Run             string            `yaml:"run"`
+	With            map[string]string `yaml:"with"`
+	If              string            `yaml:"if"`
+	ContinueOnError bool              `yaml:"continue-on-error"`
 }
 
 const ciWorkflowPath = ".github/workflows/ci.yml"
@@ -170,6 +172,42 @@ func TestE2EConformanceJobRunsWholePackageCommand(t *testing.T) {
 	}
 }
 
+// TestE2EConformanceJobRunsE2ESuite verifies that the conformance job also
+// runs the real-database e2e package (story 4.3): a step named E2E runs the
+// whole tests/e2e package under GOWORK=off, after Contract suites, in the job
+// that injects WICKET_PG_TEST_DATABASE_URL — anywhere else every database
+// assertion in tests/e2e would skip green.
+func TestE2EConformanceJobRunsE2ESuite(t *testing.T) {
+	raw, _ := readCIWorkflow(t)
+	conformance := requireJob(t, raw, "conformance")
+
+	contractIdx, e2eIdx := -1, -1
+	var e2eRun string
+	for i, s := range conformance.Steps {
+		switch s.Name {
+		case "Contract suites":
+			contractIdx = i
+		case "E2E":
+			if e2eIdx >= 0 {
+				t.Fatal("conformance job has more than one step named 'E2E'")
+			}
+			e2eIdx, e2eRun = i, s.Run
+		}
+	}
+	if e2eIdx < 0 {
+		t.Fatal("conformance job has no step named 'E2E'")
+	}
+	if e2eRun != "GOWORK=off go test ./tests/e2e/..." {
+		t.Errorf("E2E run = %q, want %q", e2eRun, "GOWORK=off go test ./tests/e2e/...")
+	}
+	if contractIdx < 0 || e2eIdx < contractIdx {
+		t.Errorf("E2E step at index %d must come after Contract suites (index %d)", e2eIdx, contractIdx)
+	}
+	if conformance.Env[testDatabaseURLEnv] == "" {
+		t.Errorf("conformance job must inject a non-empty %s so the E2E step does not skip", testDatabaseURLEnv)
+	}
+}
+
 // TestE2EConformanceJobFailurePropagates verifies AC-3: a failing suite
 // turns the job red. The Contract suites step runs go test (non-zero exit
 // on failure), carries no continue-on-error, and is not gated by an
@@ -195,8 +233,11 @@ func TestE2EConformanceJobFailurePropagates(t *testing.T) {
 	}
 	// continue-on-error at job or step level would swallow a failing
 	// suite; the conformance job must fail red on any suite failure.
+	if conformance.ContinueOnError {
+		t.Error("conformance job carries continue-on-error")
+	}
 	for _, s := range conformance.Steps {
-		if strings.Contains(s.Run, "continue-on-error") {
+		if s.ContinueOnError {
 			t.Errorf("step %q carries continue-on-error", s.Name)
 		}
 	}
