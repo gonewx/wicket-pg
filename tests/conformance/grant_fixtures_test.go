@@ -15,7 +15,7 @@ import (
 
 // Grant-family suite fixtures.
 //
-// The eight grant storage port suites each run against their own factory
+// The nine grant storage port suites each run against their own factory
 // built from NewStore with the matching store constructor, so every suite
 // case gets a brand-new empty store in its own schema:
 //
@@ -27,9 +27,10 @@ import (
 //	storagetest.RunDeviceFlowStoreSuite(t, factory, opts...)
 //	storagetest.RunBackchannelAuthenticationRequestStoreSuite(t, factory, opts...)
 //	storagetest.RunPushedAuthorizationRequestStoreSuite(t, factory, opts...)
+//	storagetest.RunClientRegistrationStoreSuite(t, factory, opts...)
 //
 // Each factory is independent: no schema name, pool, or constructor state is
-// shared between the eight entries (AC-3, AD-9).
+// shared between the nine entries (AC-3, AD-9).
 //
 // The MUST/MAY case counts in the comments below are those of storagetest
 // SuiteVersion 3.0.0 (wicket v0.8.0); re-count them on every suite bump.
@@ -130,6 +131,20 @@ func TestPushedAuthorizationRequestStoreSuite(t *testing.T) {
 	storagetest.RunPushedAuthorizationRequestStoreSuite(t,
 		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.PushedAuthorizationRequestStore {
 			return store.NewPushedAuthorizationRequestStore(pool, logger)
+		}),
+		storagetest.WithMay(true))
+}
+
+// TestClientRegistrationStoreSuite runs the client registration conformance
+// suite (15 MUST cases, the origin lookup among them, plus the 2 MAY cases
+// ReturnedRecordIsolated and ConformsToCredential, enabled via WithMay)
+// against the pgx-backed adapter on a real PostgreSQL server. The same store
+// value serves storage.ClientOriginLookup, which the suite asserts. The
+// suite is skipped when WICKET_PG_TEST_DATABASE_URL is unset.
+func TestClientRegistrationStoreSuite(t *testing.T) {
+	storagetest.RunClientRegistrationStoreSuite(t,
+		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.ClientRegistrationStore {
+			return store.NewClientRegistrationStore(pool, logger)
 		}),
 		storagetest.WithMay(true))
 }

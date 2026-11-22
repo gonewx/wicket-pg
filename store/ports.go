@@ -21,6 +21,8 @@ var (
 	_ storage.DeviceFlowStore                       = (*DeviceFlowStore)(nil)
 	_ storage.BackchannelAuthenticationRequestStore = (*BackchannelAuthenticationRequestStore)(nil)
 	_ storage.PushedAuthorizationRequestStore       = (*PushedAuthorizationRequestStore)(nil)
+	_ storage.ClientRegistrationStore               = (*ClientRegistrationStore)(nil)
+	_ storage.ClientOriginLookup                    = (*ClientRegistrationStore)(nil)
 	_ session.Store                                 = (*SessionStore)(nil)
 	_ keymgmt.RecordStore                           = (*KeyRecordStore)(nil)
 )

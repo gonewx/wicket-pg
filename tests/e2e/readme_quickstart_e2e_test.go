@@ -4,7 +4,7 @@
 // Package e2e_test — story 3.1 README quick start, verified end to end.
 //
 // The README is the first thing a host developer reads: its Quick Start
-// claims an install command, a migration entry point, and ten store
+// claims an install command, a migration entry point, and eleven store
 // constructors that must match the real module exactly — a wrong signature
 // here is a broken integration for every first-time adopter. What unit
 // tests cannot prove is that the document stays truthful as the code
@@ -138,8 +138,8 @@ func TestE2EReadmeListsEveryStoreConstructor(t *testing.T) {
 	readme := readFile(t, filepath.Join(repoRoot(t), readmePath))
 
 	constructors := storeConstructors(t)
-	if len(constructors) != 10 {
-		t.Fatalf("store package exports %d constructors, want 10: %v", len(constructors), constructors)
+	if len(constructors) != 11 {
+		t.Fatalf("store package exports %d constructors, want 11: %v", len(constructors), constructors)
 	}
 	for _, ctor := range constructors {
 		call := "store." + ctor + "(pool, logger)"

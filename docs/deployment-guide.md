@@ -17,7 +17,7 @@ flowchart TD
 |---|---|---|
 | `lineage-gates` | 三项血缘门禁（版权头 / 零上游标注 / 中性提交信息） | Go `1.27.0` |
 | `build` | `go build ./...` + `go test ./...`（无库测试自动 skip） | Go `1.27.0`，`needs: lineage-gates` |
-| `conformance` | 两个步骤共用同一 PG：`Contract suites` 跑三组契约套件（grant 族 8 口 + session + keymgmt，3.0.0）；`E2E` 跑 `tests/e2e/` 真实库语义测试（直接列断言、000004 回填等）。30 分钟超时 | `postgres:15` service 容器，`WICKET_PG_TEST_DATABASE_URL` 注入 |
+| `conformance` | 两个步骤共用同一 PG：`Contract suites` 跑三组契约套件（grant 族 9 口 + session + keymgmt，3.0.0）；`E2E` 跑 `tests/e2e/` 真实库语义测试（直接列断言、000004 回填等）。30 分钟超时 | `postgres:15` service 容器，`WICKET_PG_TEST_DATABASE_URL` 注入 |
 
 设计要点：
 
@@ -108,7 +108,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 
 1. 宿主 `GOWORK=off go get github.com/gonewx/wicket-pg@v0.2.1`（要求 wicket v0.8.0；宿主仍在 wicket v0.1.x 时停留在 v0.1.3）；
 2. 启动序列中调用 `migrations.Up(ctx, pool)`（幂等）；
-3. 构造九个 store 注入 wicket（开启 wicket 的 PAR 特性时再加 `PushedAuthorizationRequestStore`，共十个；该 store 尚未发版，见 `CHANGELOG.md` Unreleased 段），装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。注意该比对在同一构建内恒成立，不能发现不兼容的适配器，返回值的可信度来自本仓的交付纪律（见 `docs/api-contracts.md` 第五节）。
+3. 构造九个 store 注入 wicket（开启 wicket 的 PAR 特性时再加 `PushedAuthorizationRequestStore`；开启动态客户端注册或依赖它的特性时再加 `ClientRegistrationStore`，经 `ServerConfig.SetClientRegistrationStore` 注入，它同时实现 `storage.ClientOriginLookup` 并服务全部客户端读取，与 `SetClientStore` / `SetClients` / `SetClientsProvider` 互斥；全开共十一个。这两个 store 尚未发版，见 `CHANGELOG.md` Unreleased 段），装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。注意该比对在同一构建内恒成立，不能发现不兼容的适配器，返回值的可信度来自本仓的交付纪律（见 `docs/api-contracts.md` 第五节）。
 
 已在跑 v0.1.x 的宿主按下文第六节升级。
 
@@ -117,7 +117,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 - **连接池生命周期**：本仓 store 不创建也不关闭 pool，也不实现 `io.Closer`——宿主必须自己 `pool.Close()`。
 - **多实例并发迁移**：并发 `Up` 无 advisory lock，多实例同时启动可能 PK 冲突；建议单实例迁移或自行加锁。
 - **表名冲突**：`schema_migrations` 与 golang-migrate 默认表同名；共用库宿主注意。
-- **清理入口**：宿主自行按需调用各 store 的 `RemoveExpired(ctx, cutoff)`（显式一次性回收，返回计数），适配器不起后台任务。从 v0.1.x 升级的宿主，在完成 6.4 的刷新令牌回填之前，不要对刷新令牌调用 `RemoveExpired`。开启 PAR 的宿主应定期调用 `PushedAuthorizationRequestStore.RemoveExpired(ctx, cutoff)`，cutoff 取当前时间即可（`RetentionExpiration` 已含交互往返宽限）：PAR 记录写入频繁，wicket 不会替宿主回收。
+- **清理入口**：宿主自行按需调用各 store 的 `RemoveExpired(ctx, cutoff)`（显式一次性回收，返回计数），适配器不起后台任务。从 v0.1.x 升级的宿主，在完成 6.4 的刷新令牌回填之前，不要对刷新令牌调用 `RemoveExpired`。开启 PAR 的宿主应定期调用 `PushedAuthorizationRequestStore.RemoveExpired(ctx, cutoff)`，cutoff 取当前时间即可（`RetentionExpiration` 已含交互往返宽限）：PAR 记录写入频繁，wicket 不会替宿主回收。`ClientRegistrationStore` 没有回收方法：注册客户端没有服务端生命周期，删除只留墓碑行（不含 secret 哈希与注册访问令牌摘要），墓碑永久占住 client id。
 - **`migrations.Down` 是全量拆除**：它对所有已应用迁移逆序执行 down 文件，包括 `000001`（DROP 全部表），会删除所有表和数据。它不是回退单个迁移的手段，生产库不要调用。
 
 ## 六、从 v0.1.x 升级到 v0.2.x

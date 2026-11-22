@@ -237,6 +237,7 @@ var businessTables = []string{
 	"sessions",
 	"key_records",
 	"pushed_authorization_requests",
+	"client_registrations",
 }
 
 var expectedIndexes = []string{
@@ -264,4 +265,5 @@ var expectedIndexes = []string{
 	"idx_device_codes_session_id",
 	"idx_user_consents_client_id",
 	"idx_pushed_authorization_requests_retention_expiration",
+	"idx_client_registrations_allowed_cors_origins",
 }

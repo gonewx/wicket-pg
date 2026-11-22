@@ -34,8 +34,8 @@ type conformsToCase struct {
 	want  string
 }
 
-// TestAllStoresConformToSuiteVersions covers all ten stores in one
-// table-driven pass (AC-1): the eight grant-family stores report the
+// TestAllStoresConformToSuiteVersions covers all eleven stores in one
+// table-driven pass (AC-1): the nine grant-family stores report the
 // storage suite version, the session store the session suite version, and
 // the key record store the keymgmt suite version. Each expectation is the
 // suite package's exported constant (AC-2), so a suite upgrade propagates
@@ -51,6 +51,7 @@ func TestAllStoresConformToSuiteVersions(t *testing.T) {
 		{"DeviceFlowStore", NewDeviceFlowStore(nil, discardLogger()), storagetest.SuiteVersion},
 		{"BackchannelAuthenticationRequestStore", NewBackchannelAuthenticationRequestStore(nil, discardLogger()), storagetest.SuiteVersion},
 		{"PushedAuthorizationRequestStore", NewPushedAuthorizationRequestStore(nil, discardLogger()), storagetest.SuiteVersion},
+		{"ClientRegistrationStore", NewClientRegistrationStore(nil, discardLogger()), storagetest.SuiteVersion},
 		{"SessionStore", NewSessionStore(nil, discardLogger()), sessiontest.SuiteVersion},
 		{"KeyRecordStore", NewKeyRecordStore(nil, discardLogger()), keymgmttest.SuiteVersion},
 	}
@@ -141,7 +142,7 @@ func TestConformsToNoHardcodedVersionLiteral(t *testing.T) {
 			}
 		}
 	}
-	if audited != 10 {
-		t.Errorf("expected 10 store files with a ConformsTo method, audited %d", audited)
+	if audited != 11 {
+		t.Errorf("expected 11 store files with a ConformsTo method, audited %d", audited)
 	}
 }

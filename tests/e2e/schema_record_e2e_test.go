@@ -212,6 +212,10 @@ func TestE2ESchemaRecordIndexDefinitionsMatchPaths(t *testing.T) {
 		"idx_device_codes_user_code":                             {columns: []string{"user_code"}, unique: true},
 		"idx_sessions_subject_id":                                {columns: []string{"subject_id"}},
 		"idx_pushed_authorization_requests_retention_expiration": {columns: []string{"retention_expiration"}},
+		// GIN on the text[] origins column: the definition reads as a single
+		// column like a btree index; the plan probe below pins that the
+		// @> lookup really goes through it.
+		"idx_client_registrations_allowed_cors_origins": {columns: []string{"allowed_cors_origins"}},
 		// Partial unique index: public_id is unique only among non-retired
 		// records (AD-7), the premise KeyRecordStore.Create relies on.
 		"idx_key_records_public_id_unique": {columns: []string{"public_id"}, unique: true, predicate: "phase <> 'retired'"},
@@ -362,6 +366,7 @@ var readPaths = []readPath{
 	{"SELECT subject_id FROM user_consents WHERE client_id = 'c-1'", "idx_user_consents_client_id"},
 	{"SELECT handle FROM authorization_codes WHERE handle = 'h-1'", "authorization_codes_pkey"},
 	{"SELECT session_id FROM sessions WHERE session_id = 's-1'", "sessions_pkey"},
+	{"SELECT client_id FROM client_registrations WHERE allowed_cors_origins @> ARRAY['https://a.example']::text[]", "idx_client_registrations_allowed_cors_origins"},
 }
 
 // TestE2ESchemaRecordReadPathsHitTheirIndexes verifies the record's

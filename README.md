@@ -4,7 +4,7 @@ PostgreSQL storage adapter for [wicket](https://github.com/gonewx/wicket).
 
 ## Status
 
-The adapter implementation is complete: all ten store types, the migrations entry point (five migrations, `000001` through `000005`), and the wicket 3.0.0 conformance contract suites are in place and passing; every store's `ConformsTo()` returns `3.0.0`. The pushed authorization request store (`PushedAuthorizationRequestStore`, for wicket's optional PAR feature) and its migration `000005` are on `main` and not yet in a release; see the Unreleased section of the changelog. A PostgreSQL client registration store is not provided yet. v0.2.1 is released and targets wicket v0.8.0: for new installs, use v0.2.1. It corrects the v0.2.0 upgrade notes (refresh tokens issued by wicket v0.1.x must be backfilled before `RemoveExpired`) and changes no code or schema; v0.2.0 is the first release for wicket v0.8.0. See [CHANGELOG.md](CHANGELOG.md) for the upgrade notes. v0.1.0 through v0.1.3 are the existing wicket v0.1.x releases (v0.1.0 is unusable through the default Go module proxy due to a distribution split).
+The adapter implementation is complete: all eleven store types, the migrations entry point (six migrations, `000001` through `000006`), and the wicket 3.0.0 conformance contract suites are in place and passing; every store's `ConformsTo()` returns `3.0.0`. The pushed authorization request store (`PushedAuthorizationRequestStore`, for wicket's optional PAR feature) with its migration `000005`, and the client registration store (`ClientRegistrationStore`, for wicket's dynamic client registration and the features that depend on it) with its migration `000006`, are on `main` and not yet in a release; see the Unreleased section of the changelog. v0.2.1 is released and targets wicket v0.8.0: for new installs, use v0.2.1. It corrects the v0.2.0 upgrade notes (refresh tokens issued by wicket v0.1.x must be backfilled before `RemoveExpired`) and changes no code or schema; v0.2.0 is the first release for wicket v0.8.0. See [CHANGELOG.md](CHANGELOG.md) for the upgrade notes. v0.1.0 through v0.1.3 are the existing wicket v0.1.x releases (v0.1.0 is unusable through the default Go module proxy due to a distribution split).
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ if err := migrations.Up(ctx, pool); err != nil {
 
 ### Inject the stores
 
-Ten store constructors are provided, one per wicket store port this adapter implements; wicket's `storage.ClientRegistrationStore` port is not implemented. `NewPushedAuthorizationRequestStore` is needed only when the host enables wicket's PAR feature, which requires a `storage.PushedAuthorizationRequestStore` injected with `ServerConfig.SetPushedAuthorizationRequestStore` (or `SetPushedAuthorizationRequestStoreProvider`). Each takes the host-owned `*pgxpool.Pool` and a `*slog.Logger` (a nil logger falls back to `slog.Default()`):
+Eleven store constructors are provided, one per wicket store port this adapter implements (`NewClientRegistrationStore` serves both `storage.ClientRegistrationStore` and `storage.ClientOriginLookup` on the same value). `NewPushedAuthorizationRequestStore` is needed only when the host enables wicket's PAR feature, which requires a `storage.PushedAuthorizationRequestStore` injected with `ServerConfig.SetPushedAuthorizationRequestStore` (or `SetPushedAuthorizationRequestStoreProvider`). `NewClientRegistrationStore` is needed only when the host enables dynamic client registration or a feature that depends on it, which requires a `storage.ClientRegistrationStore` that also implements `storage.ClientOriginLookup`, injected with `ServerConfig.SetClientRegistrationStore`; that store then serves every client read, so it replaces `SetClientStore`, `SetClients` and `SetClientsProvider`. Each takes the host-owned `*pgxpool.Pool` and a `*slog.Logger` (a nil logger falls back to `slog.Default()`):
 
 ```go
 import (
@@ -67,6 +67,7 @@ _ = store.NewPersistedGrantStore(pool, logger)
 _ = store.NewDeviceFlowStore(pool, logger)
 _ = store.NewBackchannelAuthenticationRequestStore(pool, logger)
 _ = store.NewPushedAuthorizationRequestStore(pool, logger)
+_ = store.NewClientRegistrationStore(pool, logger)
 _ = store.NewSessionStore(pool, logger)
 _ = store.NewKeyRecordStore(pool, logger)
 ```

@@ -6,15 +6,15 @@
 
 | 包 | 路径 | 职责 |
 |---|---|---|
-| `store` | `github.com/gonewx/wicket-pg/store` | 十个 PostgreSQL 适配器 |
+| `store` | `github.com/gonewx/wicket-pg/store` | 十一个 PostgreSQL 适配器 |
 | `migrations` | `github.com/gonewx/wicket-pg/migrations` | schema 迁移入口 |
 | `tests/conformance` | `github.com/gonewx/wicket-pg/tests/conformance` | 契约套件接入（测试用，宿主一般不需要） |
 
-依赖：`github.com/gonewx/wicket v0.8.0`（三套契约套件 `SuiteVersion` 均为 `3.0.0`；`TakeAuthorizationCode` 与 7 个 ByClient / BySession 方法自 wicket v0.5.0 起进入端口，`RemoveDeviceCodesBySession` 与可选端口 `storage.PushedAuthorizationRequestStore` 自 v0.8.0 起）、`github.com/jackc/pgx/v5 v5.10.0`。
+依赖：`github.com/gonewx/wicket v0.8.0`（三套契约套件 `SuiteVersion` 均为 `3.0.0`；`TakeAuthorizationCode` 与 7 个 ByClient / BySession 方法自 wicket v0.5.0 起进入端口，`RemoveDeviceCodesBySession` 与可选端口 `storage.PushedAuthorizationRequestStore` 自 v0.8.0 起；`storage.ClientRegistrationStore` 与 `storage.ClientOriginLookup` 自 v0.5.0 起进入端口，v0.8.0 的动态客户端注册特性起要求显式注入）、`github.com/jackc/pgx/v5 v5.10.0`。
 
 ## 二、store 包
 
-### 构造器（十个，形态统一）
+### 构造器（十一个，形态统一）
 
 ```go
 func NewAuthorizationCodeStore(pool *pgxpool.Pool, logger *slog.Logger) *AuthorizationCodeStore
@@ -25,6 +25,7 @@ func NewPersistedGrantStore(pool *pgxpool.Pool, logger *slog.Logger) *PersistedG
 func NewDeviceFlowStore(pool *pgxpool.Pool, logger *slog.Logger) *DeviceFlowStore
 func NewBackchannelAuthenticationRequestStore(pool *pgxpool.Pool, logger *slog.Logger) *BackchannelAuthenticationRequestStore
 func NewPushedAuthorizationRequestStore(pool *pgxpool.Pool, logger *slog.Logger) *PushedAuthorizationRequestStore
+func NewClientRegistrationStore(pool *pgxpool.Pool, logger *slog.Logger) *ClientRegistrationStore
 func NewSessionStore(pool *pgxpool.Pool, logger *slog.Logger) *SessionStore
 func NewKeyRecordStore(pool *pgxpool.Pool, logger *slog.Logger) *KeyRecordStore
 ```
@@ -135,6 +136,27 @@ func (s *PushedAuthorizationRequestStore) ConformsTo() string
 - 读取与取出均不判断过期；`RemoveExpired` 删除 `RetentionExpiration` 严格早于 cutoff 的记录，`EntryExpiration` 已过但 `RetentionExpiration` 未过的记录保留；零值 `RetentionExpiration` 被任何晚于零时刻的 cutoff 回收。
 - 模型只从 payload 解码；`client_id` 与三个时间列只写不读（见 [schema-design-record.md](./schema-design-record.md) 例外 9）。
 
+### 客户端注册（`storage.ClientRegistrationStore` + `storage.ClientOriginLookup`，DCR，可选端口）
+
+宿主开启 wicket 的动态客户端注册或依赖它的特性时，须经 `ServerConfig.SetClientRegistrationStore` 显式注入此端口，且注入值须同时实现 `storage.ClientOriginLookup`（wicket 没有回退实现）。`ClientRegistrationStore` 在同一个值上实现两个端口；注入后它同时服务所有客户端读取与 CORS 判定，与 `SetClientStore` / `SetClients` / `SetClientsProvider` 互斥。未开启这些特性的宿主不需要构造它。
+
+```go
+func (s *ClientRegistrationStore) RegisterClient(ctx context.Context, registration *models.ClientRegistration) (int, error)  // insert-only，返回 1
+func (s *ClientRegistrationStore) FindClientRegistration(ctx context.Context, clientId string) (*models.ClientRegistration, error)
+func (s *ClientRegistrationStore) FindClientById(ctx context.Context, clientId string) (*models.Client, error)
+func (s *ClientRegistrationStore) UpdateClientRegistration(ctx context.Context, registration *models.ClientRegistration, expectedRevision int) (int, error)  // 返回提交后的 revision
+func (s *ClientRegistrationStore) RemoveClientRegistration(ctx context.Context, clientId string, expectedRevision int) error  // 留墓碑
+func (s *ClientRegistrationStore) FindClientsByAllowedOrigin(ctx context.Context, origin string) ([]*models.Client, error)  // storage.ClientOriginLookup
+func (s *ClientRegistrationStore) ConformsTo() string
+```
+
+- 客户端经 `storage.EncodeClient` 编码后存入 payload，读取时经 `storage.DecodeClient` 还原；每次读取返回独立副本。
+- `RegisterClient` 是普通 INSERT，忽略入参的 `Revision`，返回 1；已注册或已删除（墓碑）的 client id 都返回 `storage.ErrDuplicateHandle`。registration、`Client` 为 nil 或 `ClientId` 为空时返回错误，不发 SQL（`UpdateClientRegistration` 同）。
+- `UpdateClientRegistration` / `RemoveClientRegistration` 是单语句条件 UPDATE（`WHERE client_id = $1 AND NOT removed AND revision = $2`），更新在同一语句里 `revision = revision + 1`；不匹配时复查：无行或已墓碑返回 `storage.ErrNotFound`，否则返回 `storage.ErrVersionConflict`，存储记录不变。
+- 删除留墓碑：行保留 `client_id`、`revision` 与 `registration_time`，`payload`、注册访问令牌摘要置 NULL，`allowed_cors_origins` 置空数组；墓碑上的读取、更新、删除都返回 `storage.ErrNotFound`。
+- `FindClientsByAllowedOrigin` 精确匹配（大小写、端口、尾斜杠都算），不过滤 `Enabled`，不含墓碑；未命中返回非 nil 空切片。
+- `Revision` 只取自 `revision` 列；摘要、注册时间与 origins 三列只写不读（见 [schema-design-record.md](./schema-design-record.md) 例外 10）。不提供按摘要查找、无过滤枚举，也没有清理方法。
+
 ### 会话（`session.Store`）
 
 ```go
@@ -157,7 +179,7 @@ func (s *KeyRecordStore) Create(ctx context.Context, record *keymgmt.Record) err
 func (s *KeyRecordStore) Update(ctx context.Context, record *keymgmt.Record, expectedVersion uint64) error  // 版本冲突返 ErrVersionConflict
 func (s *KeyRecordStore) Delete(ctx context.Context, handle string) error
 func (s *KeyRecordStore) List(ctx context.Context) ([]*keymgmt.Record, error)
-func (s *KeyRecordStore) ConformsTo() string  // 唯一无清理方法（密钥退役由核心协调）
+func (s *KeyRecordStore) ConformsTo() string  // 无清理方法（密钥退役由核心协调；ClientRegistrationStore 同样没有）
 ```
 
 ## 三、migrations 包
@@ -188,15 +210,16 @@ func Down(ctx context.Context, pool *pgxpool.Pool) error  // 逆序回滚已应�
 - 错误判定用 `errors.Is`（哨兵是 `%w` 链上的一环）。
 - **原子取出（AD-12）**：`TakeAuthorizationCode` 用单语句 `DELETE FROM authorization_codes WHERE handle = $1 RETURNING payload` 完成定位、删除与返回，不开显式事务、不先 SELECT 再 DELETE；0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一句柄只有一个成功。DELETE 已提交后 payload 解码失败时返回包装后的解码错误（不是 `ErrNotFound`），码不恢复；ctx 取消或连接中断等传输失败同理——任何非 `ErrNotFound` 错误都可能意味着码已被消费，此时重试会得到 `ErrNotFound`。
 - **PAR 原子取出（AD-12）**：`TakePushedAuthorizationRequest` 用单语句 `DELETE FROM pushed_authorization_requests WHERE key = $1 RETURNING payload`，其余语义同上：0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一键只有一个成功；DELETE 已提交后的解码或传输错误都可能意味着请求已被消费，请求不恢复。
+- **DCR revision 守卫（AD-3）**：`UpdateClientRegistration` / `RemoveClientRegistration` 只发一条条件 UPDATE，不先查后写、不开显式事务；0 行后的 `SELECT removed ... WHERE client_id = $1` 只用于区分 `ErrNotFound` 与 `ErrVersionConflict`。读取遇到无法解码的 payload 时返回包装后的解码错误，不是 `ErrNotFound`。
 - **按条件移除（AD-13）**：8 个 `Remove*ByClient` / `*BySession` 方法在参数为空串时直接返回 `(0, nil)`、不发 SQL（`user_consents.client_id` 为 `NOT NULL` 列，空 ClientId 以空串存储，空参数若下发会误删）；否则执行单语句 `DELETE ... WHERE <定位列> = $1`，返回 `RowsAffected`，零匹配返回 `(0, nil)`。定位列由迁移 000004 增加并回填存量行，见 [schema-design-record.md](./schema-design-record.md) 例外 7、8。`PersistedGrantStore` 无新增方法，按 client / session 移除沿用 `RemoveAll` 过滤。
 
 ## 五、合规凭证（宿主装配期校验）
 
-十个 store 均暴露 `ConformsTo() string`，返回所属套件版本：
+十一个 store 均暴露 `ConformsTo() string`，返回所属套件版本：
 
 | Store | 值 |
 |---|---|
-| 八个 grant 族 store（含 `PushedAuthorizationRequestStore`） | `storagetest.SuiteVersion`（`"3.0.0"`） |
+| 九个 grant 族 store（含 `PushedAuthorizationRequestStore` 与 `ClientRegistrationStore`） | `storagetest.SuiteVersion`（`"3.0.0"`） |
 | `SessionStore` | `sessiontest.SuiteVersion`（`"3.0.0"`） |
 | `KeyRecordStore` | `keymgmttest.SuiteVersion`（`"3.0.0"`） |
 
@@ -210,7 +233,7 @@ _ = migrations.Up(ctx, pool)              // 幂等
 
 logger := slog.Default()
 authCodeStore := store.NewAuthorizationCodeStore(pool, logger)
-// ... 其余九个构造器（PushedAuthorizationRequestStore 仅在开启 PAR 时需要）
+// ... 其余十个构造器（PushedAuthorizationRequestStore 仅在开启 PAR 时需要，ClientRegistrationStore 仅在开启 DCR 或依赖它的特性时需要）
 if authCodeStore.ConformsTo() != storagetest.SuiteVersion { /* 策略由宿主决定 */ }
 ```
 

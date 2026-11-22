@@ -24,7 +24,8 @@ import (
 const testDatabaseURLEnv = "WICKET_PG_TEST_DATABASE_URL"
 
 // businessTables lists every business table the migrations must create: the
-// nine tables in story 1.1 order, then pushed_authorization_requests (000005).
+// nine tables in story 1.1 order, then pushed_authorization_requests (000005)
+// and client_registrations (000006).
 var businessTables = []string{
 	"authorization_codes",
 	"refresh_tokens",
@@ -36,6 +37,7 @@ var businessTables = []string{
 	"sessions",
 	"key_records",
 	"pushed_authorization_requests",
+	"client_registrations",
 }
 
 var expectedIndexes = []string{
@@ -63,6 +65,7 @@ var expectedIndexes = []string{
 	"idx_device_codes_session_id",
 	"idx_user_consents_client_id",
 	"idx_pushed_authorization_requests_retention_expiration",
+	"idx_client_registrations_allowed_cors_origins",
 }
 
 // TestE2EMigrationLifecycle walks the full acceptance path on a throwaway
@@ -77,14 +80,14 @@ func TestE2EMigrationLifecycle(t *testing.T) {
 		t.Fatalf("first Up: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004", "000005"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004", "000005", "000006"})
 
 	// AC-1: second Up must not error and must not duplicate objects.
 	if err := migrations.Up(t.Context(), pool); err != nil {
 		t.Fatalf("second Up: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004", "000005"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004", "000005", "000006"})
 
 	// AC-3: Down rolls everything back and clears the bookkeeping.
 	if err := migrations.Down(t.Context(), pool); err != nil {
@@ -97,7 +100,7 @@ func TestE2EMigrationLifecycle(t *testing.T) {
 		t.Fatalf("Up after Down: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004", "000005"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004", "000005", "000006"})
 }
 
 // TestE2EMigrationsHonorSearchPath pins the connection search_path to a
@@ -147,7 +150,7 @@ func TestE2EMigrationsHonorSearchPath(t *testing.T) {
 			t.Errorf("index %s leaked into public schema", index)
 		}
 	}
-	assertAppliedVersions(t, isolated, []string{"000001", "000002", "000003", "000004", "000005"})
+	assertAppliedVersions(t, isolated, []string{"000001", "000002", "000003", "000004", "000005", "000006"})
 
 	// Down removes the objects from the isolated schema only.
 	if err := migrations.Down(t.Context(), isolated); err != nil {
@@ -236,6 +239,15 @@ func TestE2ESchemaContract(t *testing.T) {
 			"retention_expiration": "timestamptz",
 			"payload":              "jsonb",
 		},
+		"client_registrations": {
+			"client_id":                        "text",
+			"revision":                         "int8",
+			"removed":                          "bool",
+			"registration_access_token_digest": "text",
+			"registration_time":                "timestamptz",
+			"allowed_cors_origins":             "_text",
+			"payload":                          "jsonb",
+		},
 		"key_records": {
 			"handle":    "text",
 			"public_id": "text",
@@ -284,6 +296,30 @@ func TestE2ESchemaContract(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("pushed_authorization_requests.%s nullable = %v, want %v", column, got, want)
+		}
+	}
+
+	// client_registrations nullability: a tombstone clears payload and the
+	// token digest, so only those two may be NULL (the CHECK constraints tie
+	// them to removed); allowed_cors_origins is NOT NULL so the origin
+	// lookup never meets a NULL array.
+	dcrNullable := map[string]bool{
+		"client_id":                        false,
+		"revision":                         false,
+		"removed":                          false,
+		"registration_access_token_digest": true,
+		"registration_time":                false,
+		"allowed_cors_origins":             false,
+		"payload":                          true,
+	}
+	for column, want := range dcrNullable {
+		got, ok := columnNullable(t, pool, "client_registrations", column)
+		if !ok {
+			t.Errorf("table client_registrations is missing column %s", column)
+			continue
+		}
+		if got != want {
+			t.Errorf("client_registrations.%s nullable = %v, want %v", column, got, want)
 		}
 	}
 }

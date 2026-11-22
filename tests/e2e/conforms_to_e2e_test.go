@@ -2,7 +2,7 @@
 // This file is part of wicket-pg, an independent original work.
 
 // Package e2e_test pins the story 1.14 compliance credentials at the
-// assembled-host layer: all ten stores constructed against one real,
+// assembled-host layer: all eleven stores constructed against one real,
 // migrated schema (the host assembly scenario) report their suite version
 // without panicking, each call returns the value of the suite package's
 // exported constant, and repeated calls are stable. The nil-pool unit test
@@ -72,6 +72,9 @@ func TestE2EAllStoresConformToSuiteVersions(t *testing.T) {
 		{"PushedAuthorizationRequestStore", func(p *pgxpool.Pool) interface{ ConformsTo() string } {
 			return store.NewPushedAuthorizationRequestStore(p, discardLogger())
 		}, storagetest.SuiteVersion},
+		{"ClientRegistrationStore", func(p *pgxpool.Pool) interface{ ConformsTo() string } {
+			return store.NewClientRegistrationStore(p, discardLogger())
+		}, storagetest.SuiteVersion},
 		{"SessionStore", func(p *pgxpool.Pool) interface{ ConformsTo() string } {
 			return store.NewSessionStore(p, discardLogger())
 		}, sessiontest.SuiteVersion},
@@ -95,7 +98,7 @@ func TestE2EAllStoresConformToSuiteVersions(t *testing.T) {
 }
 
 // TestE2ESuiteVersionsPinned pins, at the assembled-host layer, the version
-// every store reports: all ten stores built on one migrated schema report
+// every store reports: all eleven stores built on one migrated schema report
 // the same suite version, and that version is the one this module is
 // verified against. The expected value is assembled at runtime so no audit
 // or lineage gate can match this file's own source.
@@ -115,6 +118,7 @@ func TestE2ESuiteVersionsPinned(t *testing.T) {
 		"DeviceFlowStore":                       store.NewDeviceFlowStore(pool, discardLogger()),
 		"BackchannelAuthenticationRequestStore": store.NewBackchannelAuthenticationRequestStore(pool, discardLogger()),
 		"PushedAuthorizationRequestStore":       store.NewPushedAuthorizationRequestStore(pool, discardLogger()),
+		"ClientRegistrationStore":               store.NewClientRegistrationStore(pool, discardLogger()),
 		"SessionStore":                          store.NewSessionStore(pool, discardLogger()),
 		"KeyRecordStore":                        store.NewKeyRecordStore(pool, discardLogger()),
 	}
