@@ -53,6 +53,14 @@ var expectedIndexes = []string{
 	"idx_persisted_grants_client_id",
 	"idx_persisted_grants_type",
 	"idx_key_records_public_id_unique",
+	"idx_authorization_codes_client_id",
+	"idx_authorization_codes_session_id",
+	"idx_refresh_tokens_client_id",
+	"idx_refresh_tokens_session_id",
+	"idx_reference_tokens_client_id",
+	"idx_reference_tokens_session_id",
+	"idx_device_codes_session_id",
+	"idx_user_consents_client_id",
 }
 
 // TestE2EMigrationLifecycle walks the full acceptance path on a throwaway
@@ -67,14 +75,14 @@ func TestE2EMigrationLifecycle(t *testing.T) {
 		t.Fatalf("first Up: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004"})
 
 	// AC-1: second Up must not error and must not duplicate objects.
 	if err := migrations.Up(t.Context(), pool); err != nil {
 		t.Fatalf("second Up: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004"})
 
 	// AC-3: Down rolls everything back and clears the bookkeeping.
 	if err := migrations.Down(t.Context(), pool); err != nil {
@@ -87,7 +95,7 @@ func TestE2EMigrationLifecycle(t *testing.T) {
 		t.Fatalf("Up after Down: %v", err)
 	}
 	assertObjectsPresent(t, pool)
-	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003"})
+	assertAppliedVersions(t, pool, []string{"000001", "000002", "000003", "000004"})
 }
 
 // TestE2EMigrationsHonorSearchPath pins the connection search_path to a
@@ -137,7 +145,7 @@ func TestE2EMigrationsHonorSearchPath(t *testing.T) {
 			t.Errorf("index %s leaked into public schema", index)
 		}
 	}
-	assertAppliedVersions(t, isolated, []string{"000001", "000002", "000003"})
+	assertAppliedVersions(t, isolated, []string{"000001", "000002", "000003", "000004"})
 
 	// Down removes the objects from the isolated schema only.
 	if err := migrations.Down(t.Context(), isolated); err != nil {
@@ -164,17 +172,23 @@ func TestE2ESchemaContract(t *testing.T) {
 	contract := map[string]map[string]string{
 		"authorization_codes": {
 			"handle":     "text",
+			"client_id":  "text",
+			"session_id": "text",
 			"expires_at": "timestamptz",
 			"payload":    "jsonb",
 		},
 		"refresh_tokens": {
 			"handle":     "text",
+			"client_id":  "text",
+			"session_id": "text",
 			"expires_at": "timestamptz",
 			"version":    "int8",
 			"payload":    "jsonb",
 		},
 		"reference_tokens": {
 			"handle":     "text",
+			"client_id":  "text",
+			"session_id": "text",
 			"expires_at": "timestamptz",
 			"payload":    "jsonb",
 		},
@@ -196,6 +210,7 @@ func TestE2ESchemaContract(t *testing.T) {
 		"device_codes": {
 			"handle":     "text",
 			"user_code":  "text",
+			"session_id": "text",
 			"expires_at": "timestamptz",
 			"payload":    "jsonb",
 		},

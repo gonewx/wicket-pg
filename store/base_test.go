@@ -29,3 +29,19 @@ func TestNewBasePreservesInjectedLogger(t *testing.T) {
 		t.Errorf("newBase(nil, logger).logger = %v, want the injected logger", b.logger)
 	}
 }
+
+func TestNullIfEmptyMapsEmptyToNil(t *testing.T) {
+	if got := nullIfEmpty(""); got != nil {
+		t.Errorf("nullIfEmpty(\"\") = %q, want nil (stored as NULL)", *got)
+	}
+}
+
+func TestNullIfEmptyKeepsNonEmptyValue(t *testing.T) {
+	got := nullIfEmpty("client-1")
+	if got == nil {
+		t.Fatal("nullIfEmpty(\"client-1\") = nil, want a pointer to the value")
+	}
+	if *got != "client-1" {
+		t.Errorf("nullIfEmpty(\"client-1\") = %q, want %q", *got, "client-1")
+	}
+}

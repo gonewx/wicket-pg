@@ -19,8 +19,10 @@ import (
 // storage.ReferenceTokenStore port. Records live in the reference_tokens
 // table with the model serialized into the payload column; expires_at is
 // derived at write time and reclaimed only by an explicit RemoveExpired
-// call. Batch revocation by subject/client pair scans the payload column,
-// because the schema carries no subject/client real columns.
+// call. The client id and the session (the sid claim) are mirrored in the
+// client_id / session_id locator columns; batch revocation by subject/client
+// pair still scans the payload column, because the subject has no real
+// column.
 type ReferenceTokenStore struct {
 	baseStore
 }
@@ -34,7 +36,9 @@ func NewReferenceTokenStore(pool *pgxpool.Pool, logger *slog.Logger) *ReferenceT
 
 // StoreReferenceToken writes a token under the caller-supplied handle. The
 // write is insert-only: a handle that already exists fails with
-// storage.ErrDuplicateHandle and the stored record is left unchanged.
+// storage.ErrDuplicateHandle and the stored record is left unchanged. The
+// token's client id and session (Token.SessionId(), the sid claim) are
+// written to the client_id / session_id locator columns (empty as NULL).
 func (s *ReferenceTokenStore) StoreReferenceToken(ctx context.Context, handle string, token *models.Token) error {
 	payload, err := s.codec.encode(token)
 	if err != nil {
@@ -42,8 +46,8 @@ func (s *ReferenceTokenStore) StoreReferenceToken(ctx context.Context, handle st
 	}
 	expiresAt := token.CreationTime.Add(time.Duration(token.Lifetime) * time.Second)
 	_, err = s.pool.Exec(ctx,
-		"INSERT INTO reference_tokens (handle, expires_at, payload) VALUES ($1, $2, $3)",
-		handle, expiresAt, payload)
+		"INSERT INTO reference_tokens (handle, client_id, session_id, expires_at, payload) VALUES ($1, $2, $3, $4, $5)",
+		handle, nullIfEmpty(token.ClientId), nullIfEmpty(token.SessionId()), expiresAt, payload)
 	if err != nil {
 		return mapDuplicateErr(err, storage.ErrDuplicateHandle)
 	}
@@ -83,8 +87,8 @@ func (s *ReferenceTokenStore) RemoveReferenceToken(ctx context.Context, handle s
 }
 
 // RemoveReferenceTokens revokes every token whose derived subject and
-// client id match the pair. Because the table carries no subject/client
-// columns, matching scans the payload column and decodes each row in Go;
+// client id match the pair. Because the table carries no subject column,
+// matching scans the payload column and decodes each row in Go;
 // matched handles are then deleted in a single statement. An empty match
 // set deletes nothing and succeeds.
 func (s *ReferenceTokenStore) RemoveReferenceTokens(ctx context.Context, subjectId, clientId string) error {

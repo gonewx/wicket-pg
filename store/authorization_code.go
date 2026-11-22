@@ -33,7 +33,9 @@ func NewAuthorizationCodeStore(pool *pgxpool.Pool, logger *slog.Logger) *Authori
 
 // StoreAuthorizationCode writes a code under the caller-supplied handle.
 // The write is insert-only: a handle that already exists fails with
-// storage.ErrDuplicateHandle and the stored record is left unchanged.
+// storage.ErrDuplicateHandle and the stored record is left unchanged. The
+// code's client and session are written to the client_id / session_id
+// locator columns (empty values as NULL).
 func (s *AuthorizationCodeStore) StoreAuthorizationCode(ctx context.Context, handle string, code *models.AuthorizationCode) error {
 	payload, err := s.codec.encode(code)
 	if err != nil {
@@ -41,8 +43,8 @@ func (s *AuthorizationCodeStore) StoreAuthorizationCode(ctx context.Context, han
 	}
 	expiresAt := code.CreationTime.Add(time.Duration(code.Lifetime) * time.Second)
 	_, err = s.pool.Exec(ctx,
-		"INSERT INTO authorization_codes (handle, expires_at, payload) VALUES ($1, $2, $3)",
-		handle, expiresAt, payload)
+		"INSERT INTO authorization_codes (handle, client_id, session_id, expires_at, payload) VALUES ($1, $2, $3, $4, $5)",
+		handle, nullIfEmpty(code.ClientId), nullIfEmpty(code.SessionId), expiresAt, payload)
 	if err != nil {
 		return mapDuplicateErr(err, storage.ErrDuplicateHandle)
 	}

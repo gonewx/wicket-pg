@@ -254,4 +254,12 @@ var expectedIndexes = []string{
 	"idx_persisted_grants_client_id",
 	"idx_persisted_grants_type",
 	"idx_key_records_public_id_unique",
+	"idx_authorization_codes_client_id",
+	"idx_authorization_codes_session_id",
+	"idx_refresh_tokens_client_id",
+	"idx_refresh_tokens_session_id",
+	"idx_reference_tokens_client_id",
+	"idx_reference_tokens_session_id",
+	"idx_device_codes_session_id",
+	"idx_user_consents_client_id",
 }

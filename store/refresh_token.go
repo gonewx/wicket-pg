@@ -37,7 +37,9 @@ func NewRefreshTokenStore(pool *pgxpool.Pool, logger *slog.Logger) *RefreshToken
 // write is insert-only: a handle that already exists fails with
 // storage.ErrDuplicateHandle and the stored record is left unchanged. The
 // stored copy carries version 1 and the caller's token.Version is written
-// back with the same value; the caller object is untouched on failure.
+// back with the same value; the caller object is untouched on failure. The
+// token's client and session are written to the client_id / session_id
+// locator columns (empty values as NULL).
 func (s *RefreshTokenStore) StoreRefreshToken(ctx context.Context, handle string, token *models.RefreshToken) error {
 	enc := *token
 	enc.Version = 1
@@ -47,8 +49,8 @@ func (s *RefreshTokenStore) StoreRefreshToken(ctx context.Context, handle string
 	}
 	expiresAt := token.CreationTime.Add(time.Duration(token.Lifetime) * time.Second)
 	_, err = s.pool.Exec(ctx,
-		"INSERT INTO refresh_tokens (handle, expires_at, version, payload) VALUES ($1, $2, 1, $3)",
-		handle, expiresAt, payload)
+		"INSERT INTO refresh_tokens (handle, client_id, session_id, expires_at, version, payload) VALUES ($1, $2, $3, $4, 1, $5)",
+		handle, nullIfEmpty(token.ClientId), nullIfEmpty(token.SessionId), expiresAt, payload)
 	if err != nil {
 		return mapDuplicateErr(err, storage.ErrDuplicateHandle)
 	}
@@ -93,8 +95,9 @@ func (s *RefreshTokenStore) UpdateRefreshToken(ctx context.Context, handle strin
 	}
 	expiresAt := token.CreationTime.Add(time.Duration(token.Lifetime) * time.Second)
 	tag, err := s.pool.Exec(ctx,
-		"UPDATE refresh_tokens SET version = version + 1, expires_at = $2, payload = $3 WHERE handle = $1 AND version = $4",
-		handle, expiresAt, payload, expectedVersion)
+		"UPDATE refresh_tokens SET version = version + 1, expires_at = $2, payload = $3, client_id = $5, session_id = $6 "+
+			"WHERE handle = $1 AND version = $4",
+		handle, expiresAt, payload, expectedVersion, nullIfEmpty(token.ClientId), nullIfEmpty(token.SessionId))
 	if err != nil {
 		return fmt.Errorf("update refresh token: %w", err)
 	}

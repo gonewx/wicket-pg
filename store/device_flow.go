@@ -37,7 +37,8 @@ func NewDeviceFlowStore(pool *pgxpool.Pool, logger *slog.Logger) *DeviceFlowStor
 // and user codes. The write is insert-only: either code already being
 // present fails with storage.ErrDuplicateHandle and the stored record is
 // left unchanged. expires_at is derived from the model's CreationTime and
-// Lifetime, never from a clock inside the adapter.
+// Lifetime, never from a clock inside the adapter; the record's session is
+// written to the session_id locator column (empty as NULL).
 func (s *DeviceFlowStore) StoreDeviceAuthorization(ctx context.Context, deviceCode string, userCode string, data *models.DeviceCode) error {
 	payload, err := s.codec.encode(data)
 	if err != nil {
@@ -45,8 +46,8 @@ func (s *DeviceFlowStore) StoreDeviceAuthorization(ctx context.Context, deviceCo
 	}
 	expiresAt := data.CreationTime.Add(time.Duration(data.Lifetime) * time.Second)
 	_, err = s.pool.Exec(ctx,
-		"INSERT INTO device_codes (handle, user_code, expires_at, payload) VALUES ($1, $2, $3, $4)",
-		deviceCode, userCode, expiresAt, payload)
+		"INSERT INTO device_codes (handle, user_code, session_id, expires_at, payload) VALUES ($1, $2, $3, $4, $5)",
+		deviceCode, userCode, nullIfEmpty(data.SessionId), expiresAt, payload)
 	if err != nil {
 		return mapDuplicateErr(err, storage.ErrDuplicateHandle)
 	}
@@ -92,8 +93,9 @@ func (s *DeviceFlowStore) FindByUserCode(ctx context.Context, userCode string) (
 	return data, nil
 }
 
-// UpdateByUserCode replaces the payload and the derived expires_at for the
-// record under user code. The write is a state-migration replacement, not a
+// UpdateByUserCode replaces the payload, the derived expires_at and the
+// session_id locator column for the record under user code — the approval
+// writes the session here, so the column must follow it. The write is a state-migration replacement, not a
 // version-guarded update; updating a user code that is not present succeeds
 // as a no-op.
 func (s *DeviceFlowStore) UpdateByUserCode(ctx context.Context, userCode string, data *models.DeviceCode) error {
@@ -103,8 +105,8 @@ func (s *DeviceFlowStore) UpdateByUserCode(ctx context.Context, userCode string,
 	}
 	expiresAt := data.CreationTime.Add(time.Duration(data.Lifetime) * time.Second)
 	_, err = s.pool.Exec(ctx,
-		"UPDATE device_codes SET payload = $2, expires_at = $3 WHERE user_code = $1",
-		userCode, payload, expiresAt)
+		"UPDATE device_codes SET payload = $2, expires_at = $3, session_id = $4 WHERE user_code = $1",
+		userCode, payload, expiresAt, nullIfEmpty(data.SessionId))
 	if err != nil {
 		return fmt.Errorf("update device authorization: %w", err)
 	}

@@ -49,3 +49,14 @@ func newBase(pool *pgxpool.Pool, logger *slog.Logger) baseStore {
 		codec:  &payloadCodec{},
 	}
 }
+
+// nullIfEmpty maps an empty locator value (client id, session id) to nil so
+// that pgx writes NULL. NULL never takes part in an equality match, so a
+// scoped removal for an empty argument can never select a record that has no
+// client or session; non-empty values are written as they are.
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
