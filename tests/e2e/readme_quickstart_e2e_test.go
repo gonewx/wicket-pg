@@ -28,11 +28,12 @@ import (
 
 const readmePath = "README.md"
 
-// wantReleaseVersion is the release this README documents: v0.2.0, the first
+// wantReleaseVersion is the release this README documents: v0.2.1, which
+// corrects the v0.2.0 upgrade notes on refresh tokens. v0.2.0 was the first
 // release that requires wicket v0.8.0 (suite version 3.0.0) and ships
 // migration 000004. Hosts still on wicket v0.1.x keep v0.1.3, which the
 // upgrade section names separately.
-const wantReleaseVersion = "v0.2.0"
+const wantReleaseVersion = "v0.2.1"
 
 // TestE2EReadmeInstallCommandPinsRealModule verifies AC-1: the install
 // command uses the GOWORK=off form (the external workspace would otherwise
@@ -82,8 +83,11 @@ func TestE2EReadmeInstallCommandPinsRealModule(t *testing.T) {
 // pre-check (a payload holding \u0000 rolls the whole migration back), apply migration
 // 000004 (the removal-by-client and removal-by-session methods query the
 // locator columns it adds and backfills), never back out with
-// migrations.Down (it drops every table), and stay on v0.1.3 while wicket
-// v0.1.x is in use (v0.2.0 raises the host's wicket requirement to v0.8.0).
+// migrations.Down (it drops every table), stay on v0.1.3 while wicket v0.1.x
+// is in use (v0.2.x raises the host's wicket requirement to v0.8.0), and
+// backfill refresh tokens issued by wicket v0.1.x before calling
+// RemoveExpired on them (their derived expiry is in year 1, so the first
+// RemoveExpired would delete every one of them).
 func TestE2EReadmeUpgradeSectionNamesMigrationAndFallback(t *testing.T) {
 	readme := readFile(t, filepath.Join(repoRoot(t), readmePath))
 
@@ -93,6 +97,7 @@ func TestE2EReadmeUpgradeSectionNamesMigrationAndFallback(t *testing.T) {
 		"apply migration 000004",
 		"Do not use `migrations.Down` to back out `000004`",
 		"stay on v0.1.3",
+		"Do not call `RemoveExpired` on refresh tokens before the backfill",
 	} {
 		if !strings.Contains(readme, claim) {
 			t.Errorf("README upgrade guidance must carry %q", claim)

@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file; releases before 0.2.0 are summarized briefly. Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-21
+
+Documentation, migration comment and test corrections to 0.2.0. Schema, migration SQL statements and the Go API are unchanged; only comments in `000004_scoped_removal_columns.up.sql` were updated, and no new migration is needed. Hosts that upgraded from v0.1.x, including those already running 0.2.0, must still backfill their refresh tokens as described below if they have not yet called `RefreshTokenStore.RemoveExpired`.
+
+### Fixed
+
+- **Do not call `RefreshTokenStore.RemoveExpired` before backfilling legacy refresh tokens.** A wicket v0.1.x core never sets `CreationTime` or `Lifetime` on a refresh token, so this adapter derives `expires_at` as `0001-01-01` for every such token and the first `RemoveExpired` deletes all of them, including tokens that are still valid. The 0.2.0 upgrade notes recommended reclaiming expired records with each store's `RemoveExpired` before applying `000004`; that recommendation is withdrawn for refresh tokens, here, in section 6 of the deployment guide and in the comments of `000004_scoped_removal_columns.up.sql`. `RemoveExpired` on the authorization code, reference token and device code stores is unaffected and may still be used before the upgrade: wicket v0.1.x sets `CreationTime` and `Lifetime` on those records. Hosts that already followed the 0.2.0 advice and called `RefreshTokenStore.RemoveExpired` cannot recover the deleted tokens from the database: restore them from a backup, or let their holders authorize again. Hosts that stay on wicket v0.1.x with wicket-pg v0.1.3 must not call `RefreshTokenStore.RemoveExpired` either: it deletes every refresh token for the same reason.
+- **Backfill legacy refresh tokens before their first reclamation.** Select them with `SELECT handle FROM refresh_tokens WHERE expires_at < '0002-01-01'` (a zero `CreationTime` plus a zero `Lifetime`), then for each handle call `GetRefreshToken`, set `CreationTime` and `Lifetime`, and call `UpdateRefreshToken` with the `Version` you read; the update recomputes `expires_at`. On `storage.ErrVersionConflict`, read the token again and retry. Before starting the v0.2.x writers, disable every automatic call the host makes to `RefreshTokenStore.RemoveExpired` (startup sequence, cron job, timer), and re-enable it only after the selection query returns no rows. For a client with no lifetime limit write `Lifetime = 2147483647` (the maximum), not 0: a zero `Lifetime` sets `expires_at` to the backfill time, so the next reclamation deletes the token and the selection query no longer finds it. Take the `Lifetime` value from the table in "既有 refresh token 记录的迁移" (migrating existing refresh token records) in wicket's storage persistence guide: https://github.com/gonewx/wicket/blob/v0.8.0/docs/storage-persistence-guide.md. The adapter provides no backfill helper because it cannot see each client's lifetime settings. The full recipe is in section 6.4 of the deployment guide (in Chinese): https://github.com/gonewx/wicket-pg/blob/v0.2.1/docs/deployment-guide.md
+- **Refresh tokens written before the upgrade cannot be removed by session.** The 0.2.0 entry says records written before the upgrade can be removed by client or session. wicket v0.1.x never sets a refresh token's `SessionId`, so after the `000004` backfill those tokens have no `session_id` and `RemoveRefreshTokensBySession` does not select them; removal by client works. For the other tables the backfill takes the client and session that each payload carries.
+
+The 0.2.0 entry in CHANGELOG.md is kept as published; the items above correct its maintenance window note and the last sentence of its `000004` item.
+
 ## [0.2.0] - 2026-11-21
 
 This release targets wicket v0.8.0. Hosts that remain on wicket v0.1.x stay on wicket-pg v0.1.3.
@@ -35,5 +47,6 @@ Releases for the wicket v0.1.x line. Published tags are immutable, so these note
 - **0.1.1 and 0.1.2 - 2026-08-08**: usable, but they carry the prerelease go directive `go 1.27rc1`.
 - **0.1.0 - 2026-08-08**: do not use. Fetched through the default Go module proxy it does not build, because the content served by the proxy and checksum database differs from the repository tag.
 
+[0.2.1]: https://github.com/gonewx/wicket-pg/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gonewx/wicket-pg/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/gonewx/wicket-pg/releases/tag/v0.1.3

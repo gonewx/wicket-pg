@@ -25,8 +25,14 @@
 --
 -- Operational notes:
 --   * The backfill rewrites every row of four tables inside one transaction;
---     on large tables run Up in a maintenance window, or reclaim expired
---     records with RemoveExpired first.
+--     on large tables run Up in a maintenance window. Expired authorization
+--     codes, reference tokens and device codes may be reclaimed with their
+--     store's RemoveExpired first: wicket v0.1.x sets CreationTime / Lifetime
+--     on all three. Do not call RemoveExpired on refresh tokens before
+--     backfilling them: a wicket v0.1.x core never sets a refresh token's
+--     CreationTime / Lifetime, its derived expires_at is 0001-01-01,
+--     and RemoveExpired would delete every such token, valid or not. The
+--     backfill recipe is in section 6.4 of docs/deployment-guide.md.
 --   * Stop every writer running a pre-000004 build before running Up. After
 --     Up, an old build's inserts leave the locator columns NULL and its
 --     UpdateRefreshToken / UpdateByUserCode leave stale values; the backfill
@@ -35,8 +41,10 @@
 --     any string field) cannot be cast to jsonb, so Up fails with
 --     "unsupported Unicode escape sequence" and the whole transaction rolls
 --     back, leaving 000003 intact. Remove the offending records by handle,
---     or let them expire and reclaim them with RemoveExpired, then run Up
---     again.
+--     then run Up again. Waiting for them to expire and reclaiming them with
+--     RemoveExpired works for authorization codes, reference tokens and
+--     device codes only; refresh tokens must be backfilled first (section 6.4
+--     of docs/deployment-guide.md), or removed by handle.
 --   * DDL stays relative to the connection's current search_path like
 --     000001.
 

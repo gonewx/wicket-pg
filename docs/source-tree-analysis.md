@@ -75,14 +75,14 @@ wicket-pg/
 - **门禁自证**：`discrimination_test.go` 故意构造违规（缺版权头、带上游标注）验证门禁判别力，本身也是门禁的一部分。
 - **迁移与 store 三方一致**：`migrations/schema_record_audit_test.go` 审计「设计记录 ↔ 迁移 SQL ↔ store 源码」一致；`clock_audit_test.go` 审计 SQL 无时钟函数。
 
-## 四、测试总量与分布（139 个测试函数，按 `^func Test` 计）
+## 四、测试总量与分布（140 个测试函数，按 `^func Test` 计）
 
 | 包 | 数量 |
 |---|---|
 | `store/` 单测 | 20 |
 | `migrations/` 审计 | 5 |
 | `tests/conformance/` | 21（含 9 个套件入口 + 补充断言） |
-| `tests/e2e/` | 87 |
+| `tests/e2e/` | 88 |
 | `tests/lineage/` | 6（3 门禁 + 3 探针） |
 
 ## 五、构建与测试命令
