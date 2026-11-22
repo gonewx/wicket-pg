@@ -30,6 +30,7 @@ var businessTables = []string{
 	"persisted_grants",
 	"device_codes",
 	"backchannel_auth_requests",
+	"pushed_authorization_requests",
 	"sessions",
 	"key_records",
 }
@@ -58,6 +59,7 @@ var expectedIndexes = []string{
 	"idx_reference_tokens_session_id",
 	"idx_device_codes_session_id",
 	"idx_user_consents_client_id",
+	"idx_pushed_authorization_requests_retention_expiration",
 }
 
 func TestMigrationsUpIdempotentDownReup(t *testing.T) {
@@ -100,14 +102,14 @@ func TestMigrationsUpIdempotentDownReup(t *testing.T) {
 		t.Fatalf("first Up: %v", err)
 	}
 	assertObjectsPresent(t, ctx, pool)
-	assertAppliedVersions(t, ctx, pool, []string{"000001", "000002", "000003", "000004"})
+	assertAppliedVersions(t, ctx, pool, []string{"000001", "000002", "000003", "000004", "000005"})
 
 	// AC-1: a second Up is a no-op and must not error or duplicate objects.
 	if err := migrations.Up(ctx, pool); err != nil {
 		t.Fatalf("second Up: %v", err)
 	}
 	assertObjectsPresent(t, ctx, pool)
-	assertAppliedVersions(t, ctx, pool, []string{"000001", "000002", "000003", "000004"})
+	assertAppliedVersions(t, ctx, pool, []string{"000001", "000002", "000003", "000004", "000005"})
 
 	// AC-3: Down removes everything and clears the bookkeeping table.
 	if err := migrations.Down(ctx, pool); err != nil {
@@ -120,7 +122,7 @@ func TestMigrationsUpIdempotentDownReup(t *testing.T) {
 		t.Fatalf("Up after Down: %v", err)
 	}
 	assertObjectsPresent(t, ctx, pool)
-	assertAppliedVersions(t, ctx, pool, []string{"000001", "000002", "000003", "000004"})
+	assertAppliedVersions(t, ctx, pool, []string{"000001", "000002", "000003", "000004", "000005"})
 
 	// Down on an already-clean database is a harmless no-op.
 	if err := migrations.Down(ctx, pool); err != nil {

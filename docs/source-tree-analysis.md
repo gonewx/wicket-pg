@@ -17,6 +17,7 @@ wicket-pg/
 │   ├── persisted_grant.go       #   PersistedGrantStore（持久化 grant，多维过滤）
 │   ├── device_flow.go           #   DeviceFlowStore（设备流，双码）
 │   ├── backchannel_authentication_request.go  # BackchannelAuthenticationRequestStore（CIBA）
+│   ├── pushed_authorization_request.go        # PushedAuthorizationRequestStore（PAR，可选端口，原子取出）
 │   ├── session.go               #   SessionStore（会话，text[] 原子追加）
 │   ├── key_records.go           #   KeyRecordStore（密钥记录，部分唯一索引）
 │   └── *_test.go                #   单测（基座/编解码/错误映射/ConformsTo/按条件移除 scoped_removal_test.go）
@@ -30,6 +31,8 @@ wicket-pg/
 │   ├── 000003_session_subject_id.down.sql
 │   ├── 000004_scoped_removal_columns.up.sql  # 按条件移除定位列（7 列）+ 8 索引 + 存量回填
 │   ├── 000004_scoped_removal_columns.down.sql
+│   ├── 000005_pushed_authorization_requests.up.sql  # PAR 表 + retention_expiration 回收索引
+│   ├── 000005_pushed_authorization_requests.down.sql
 │   └── *_audit_test.go          #   时钟审计 / schema 记录三方一致审计
 ├── tests/
 │   ├── lineage/                 # ★ 血缘门禁（CI 第一个 job）
@@ -37,11 +40,11 @@ wicket-pg/
 │   │   └── discrimination_test.go # 判别力探针（故意制造违规验证门禁会红）
 │   ├── conformance/             # ★ 契约套件接入点（CI conformance job）
 │   │   ├── factory.go           #   隔离 schema 工厂（每次全新空 store）
-│   │   ├── grant_fixtures_test.go  # 七个 grant 族套件入口
+│   │   ├── grant_fixtures_test.go  # 八个 grant 族套件入口（含 PAR）
 │   │   ├── session_fixture_test.go # session 套件入口
 │   │   ├── keymgmt_fixture_test.go # keymgmt 套件入口
 │   │   └── *_test.go            #   套件外的补充断言（独立拷贝语义等）
-│   └── e2e/                     #   真实 PostgreSQL e2e（19 个文件，87 个测试函数）
+│   └── e2e/                     #   真实 PostgreSQL e2e（21 个文件，94 个测试函数）
 │       ├── migrations_e2e_test.go        # 迁移生命周期/幂等/回滚/search_path
 │       ├── schema_record_e2e_test.go     # schema 契约列级断言
 │       ├── ci_job_e2e_test.go            # CI 配置静态契约（yaml 解析）
@@ -61,7 +64,7 @@ wicket-pg/
 
 | 路径 | 职责 | 入口点 |
 |---|---|---|
-| `store/` | 九个 store 适配器，共享基座 | `NewXxxStore(pool, logger)` 九个构造器 |
+| `store/` | 十个 store 适配器，共享基座 | `NewXxxStore(pool, logger)` 十个构造器 |
 | `migrations/` | schema DDL + 幂等迁移 | `migrations.Up(ctx, pool)` / `Down(ctx, pool)` |
 | `tests/lineage/` | 血缘门禁（零第三方依赖） | `go test ./tests/lineage/...` |
 | `tests/conformance/` | 契约套件接入（需真实 PG） | `go test ./tests/conformance/...` |
@@ -75,14 +78,14 @@ wicket-pg/
 - **门禁自证**：`discrimination_test.go` 故意构造违规（缺版权头、带上游标注）验证门禁判别力，本身也是门禁的一部分。
 - **迁移与 store 三方一致**：`migrations/schema_record_audit_test.go` 审计「设计记录 ↔ 迁移 SQL ↔ store 源码」一致；`clock_audit_test.go` 审计 SQL 无时钟函数。
 
-## 四、测试总量与分布（140 个测试函数，按 `^func Test` 计）
+## 四、测试总量与分布（147 个测试函数，按 `^func Test` 计）
 
 | 包 | 数量 |
 |---|---|
 | `store/` 单测 | 20 |
 | `migrations/` 审计 | 5 |
-| `tests/conformance/` | 21（含 9 个套件入口 + 补充断言） |
-| `tests/e2e/` | 88 |
+| `tests/conformance/` | 22（含 10 个套件入口 + 补充断言） |
+| `tests/e2e/` | 94 |
 | `tests/lineage/` | 6（3 门禁 + 3 探针） |
 
 ## 五、构建与测试命令

@@ -154,8 +154,8 @@ func TestE2EConformanceJobRunsWholePackageCommand(t *testing.T) {
 
 	root := repoRoot(t)
 	grantFixtures := readFile(t, filepath.Join(root, "tests/conformance/grant_fixtures_test.go"))
-	if got := strings.Count(grantFixtures, "storagetest.WithMay(true)"); got != 7 {
-		t.Errorf("grant fixtures enable WithMay %d times, want 7 entries", got)
+	if got := strings.Count(grantFixtures, "storagetest.WithMay(true)"); got != 8 {
+		t.Errorf("grant fixtures enable WithMay %d times, want 8 entries", got)
 	}
 
 	keymgmtFixtures := readFile(t, filepath.Join(root, "tests/conformance/keymgmt_fixture_test.go"))

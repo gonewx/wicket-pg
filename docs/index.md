@@ -9,16 +9,16 @@
 - **模块:** `github.com/gonewx/wicket-pg`
 - **架构:** 端口与适配器（六边形）——wicket 定义端口与契约套件，本仓是平级适配器仓
 - **数据库:** PostgreSQL 15+（`pgx/v5` 原生驱动，不经 `database/sql`）
-- **状态:** 实现完成，已适配 wicket v0.8.0（套件 3.0.0、迁移 000004）。已发布 v0.2.1（2026-11-21，更正 v0.2.0 升级说明中的刷新令牌回收建议，不改代码与 schema）、v0.2.0（2026-11-21，面向 wicket v0.8.0；发布说明见 `CHANGELOG.md`）与 v0.1.0 / v0.1.1 / v0.1.2 / v0.1.3（与 wicket v0.1.x 组合时用 v0.1.3）
+- **状态:** 实现完成，已适配 wicket v0.8.0（套件 3.0.0、迁移 000004）。`main` 上已新增 PAR store（`PushedAuthorizationRequestStore`，迁移 000005，Story 5.1），尚未发版，见 `CHANGELOG.md` 的 Unreleased 段；DCR store 暂不提供。已发布 v0.2.1（2026-11-21，更正 v0.2.0 升级说明中的刷新令牌回收建议，不改代码与 schema）、v0.2.0（2026-11-21，面向 wicket v0.8.0；发布说明见 `CHANGELOG.md`）与 v0.1.0 / v0.1.1 / v0.1.2 / v0.1.3（与 wicket v0.1.x 组合时用 v0.1.3）
 
 ### 快速参考
 
 | 项 | 值 |
 |---|---|
 | 推荐版本 | `v0.2.1`（已发布；更正 v0.2.0 升级说明，要求 wicket v0.8.0；升级须先停旧写入方再 `Up` 应用 000004，v0.1.x 签发的刷新令牌回填前不得对其调用 `RemoveExpired`，见部署指南第六节）；与 wicket v0.1.x 组合时用 `v0.1.3`（v0.1.x 线最新发布；v0.1.0 因分发层分裂不推荐引用） |
-| 关键依赖 | `github.com/gonewx/wicket v0.8.0`（三套件 `SuiteVersion` 3.0.0，九个 `ConformsTo()` 均返回 3.0.0）、`github.com/jackc/pgx/v5 v5.10.0`、`gopkg.in/yaml.v3 v3.0.1`（仅测试） |
-| 入口点 | `store.NewXxxStore(pool, logger)` × 9、`migrations.Up/Down(ctx, pool)` |
-| 测试总量 | 140 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |
+| 关键依赖 | `github.com/gonewx/wicket v0.8.0`（三套件 `SuiteVersion` 3.0.0，十个 `ConformsTo()` 均返回 3.0.0）、`github.com/jackc/pgx/v5 v5.10.0`、`gopkg.in/yaml.v3 v3.0.1`（仅测试） |
+| 入口点 | `store.NewXxxStore(pool, logger)` × 10、`migrations.Up/Down(ctx, pool)` |
+| 测试总量 | 147 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |
 | 门禁 | 三项血缘门禁（原创作权 / 零血缘标注 / 中性提交信息） |
 
 ## 生成的文档
@@ -26,11 +26,11 @@
 - [项目概览](./project-overview.md) — 目的、状态、技术栈、仓库结构
 - [架构文档](./architecture.md) — 端口与适配器设计、store 基座、错误映射、schema 哲学
 - [源码树分析](./source-tree-analysis.md) — 带注释的目录结构与职责
-- [数据模型](./data-models.md) — 10 张表 / 23 个索引的职责总览与迁移策略
+- [数据模型](./data-models.md) — 11 张表 / 24 个索引的职责总览与迁移策略
 - [开发指南](./development-guide.md) — 环境搭建、构建、测试命令
 - [部署与 CI 指南](./deployment-guide.md) — CI 三 job 管线、发布流程、从 v0.1.x 升级
 - [贡献指南](./contribution-guide.md) — 血缘门禁、提交约定、代码规范
-- [API 契约](./api-contracts.md) — 九个 store 构造器与方法的完整签名、迁移入口、错误哨兵
+- [API 契约](./api-contracts.md) — 十个 store 构造器与方法的完整签名、迁移入口、错误哨兵
 
 ## 既有文档
 

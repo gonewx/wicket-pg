@@ -55,7 +55,7 @@ const (
 //
 //	func(pool *pgxpool.Pool, logger *slog.Logger) T
 //
-// so the nine store constructors can be passed directly.
+// so the ten store constructors can be passed directly.
 func NewStore[T any](t *testing.T, construct func(pool *pgxpool.Pool, logger *slog.Logger) T) func() T {
 	t.Helper()
 

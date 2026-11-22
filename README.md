@@ -4,7 +4,7 @@ PostgreSQL storage adapter for [wicket](https://github.com/gonewx/wicket).
 
 ## Status
 
-The adapter implementation is complete: all nine store types, the migrations entry point (four migrations, `000001` through `000004`), and the wicket 3.0.0 conformance contract suites are in place and passing; every store's `ConformsTo()` returns `3.0.0`. v0.2.1 is released and targets wicket v0.8.0: for new installs, use v0.2.1. It corrects the v0.2.0 upgrade notes (refresh tokens issued by wicket v0.1.x must be backfilled before `RemoveExpired`) and changes no code or schema; v0.2.0 is the first release for wicket v0.8.0. See [CHANGELOG.md](CHANGELOG.md) for the upgrade notes. v0.1.0 through v0.1.3 are the existing wicket v0.1.x releases (v0.1.0 is unusable through the default Go module proxy due to a distribution split).
+The adapter implementation is complete: all ten store types, the migrations entry point (five migrations, `000001` through `000005`), and the wicket 3.0.0 conformance contract suites are in place and passing; every store's `ConformsTo()` returns `3.0.0`. The pushed authorization request store (`PushedAuthorizationRequestStore`, for wicket's optional PAR feature) and its migration `000005` are on `main` and not yet in a release; see the Unreleased section of the changelog. A PostgreSQL client registration store is not provided yet. v0.2.1 is released and targets wicket v0.8.0: for new installs, use v0.2.1. It corrects the v0.2.0 upgrade notes (refresh tokens issued by wicket v0.1.x must be backfilled before `RemoveExpired`) and changes no code or schema; v0.2.0 is the first release for wicket v0.8.0. See [CHANGELOG.md](CHANGELOG.md) for the upgrade notes. v0.1.0 through v0.1.3 are the existing wicket v0.1.x releases (v0.1.0 is unusable through the default Go module proxy due to a distribution split).
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ if err := migrations.Up(ctx, pool); err != nil {
 
 ### Inject the stores
 
-Nine store constructors are provided, one per wicket storage family. Each takes the host-owned `*pgxpool.Pool` and a `*slog.Logger` (a nil logger falls back to `slog.Default()`):
+Ten store constructors are provided, one per wicket storage port. `NewPushedAuthorizationRequestStore` is needed only when the host enables wicket's PAR feature, which requires an injected `storage.PushedAuthorizationRequestStore`. Each takes the host-owned `*pgxpool.Pool` and a `*slog.Logger` (a nil logger falls back to `slog.Default()`):
 
 ```go
 import (
@@ -66,6 +66,7 @@ _ = store.NewUserConsentStore(pool, logger)
 _ = store.NewPersistedGrantStore(pool, logger)
 _ = store.NewDeviceFlowStore(pool, logger)
 _ = store.NewBackchannelAuthenticationRequestStore(pool, logger)
+_ = store.NewPushedAuthorizationRequestStore(pool, logger)
 _ = store.NewSessionStore(pool, logger)
 _ = store.NewKeyRecordStore(pool, logger)
 ```

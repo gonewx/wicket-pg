@@ -17,7 +17,7 @@ flowchart TD
 |---|---|---|
 | `lineage-gates` | 三项血缘门禁（版权头 / 零上游标注 / 中性提交信息） | Go `1.27.0` |
 | `build` | `go build ./...` + `go test ./...`（无库测试自动 skip） | Go `1.27.0`，`needs: lineage-gates` |
-| `conformance` | 两个步骤共用同一 PG：`Contract suites` 跑三组契约套件（grant 族 7 口 + session + keymgmt，3.0.0）；`E2E` 跑 `tests/e2e/` 真实库语义测试（直接列断言、000004 回填等）。30 分钟超时 | `postgres:15` service 容器，`WICKET_PG_TEST_DATABASE_URL` 注入 |
+| `conformance` | 两个步骤共用同一 PG：`Contract suites` 跑三组契约套件（grant 族 8 口 + session + keymgmt，3.0.0）；`E2E` 跑 `tests/e2e/` 真实库语义测试（直接列断言、000004 回填等）。30 分钟超时 | `postgres:15` service 容器，`WICKET_PG_TEST_DATABASE_URL` 注入 |
 
 设计要点：
 
@@ -108,7 +108,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 
 1. 宿主 `GOWORK=off go get github.com/gonewx/wicket-pg@v0.2.1`（要求 wicket v0.8.0；宿主仍在 wicket v0.1.x 时停留在 v0.1.3）；
 2. 启动序列中调用 `migrations.Up(ctx, pool)`（幂等）；
-3. 构造九个 store 注入 wicket，装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。注意该比对在同一构建内恒成立，不能发现不兼容的适配器，返回值的可信度来自本仓的交付纪律（见 `docs/api-contracts.md` 第五节）。
+3. 构造九个 store 注入 wicket（开启 wicket 的 PAR 特性时再加 `PushedAuthorizationRequestStore`，共十个；该 store 尚未发版，见 `CHANGELOG.md` Unreleased 段），装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。注意该比对在同一构建内恒成立，不能发现不兼容的适配器，返回值的可信度来自本仓的交付纪律（见 `docs/api-contracts.md` 第五节）。
 
 已在跑 v0.1.x 的宿主按下文第六节升级。
 

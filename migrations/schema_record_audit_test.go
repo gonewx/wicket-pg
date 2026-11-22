@@ -37,6 +37,7 @@ func readSQLObjectNames(t *testing.T) (tables, indexes map[string]bool) {
 		"000002_device_flow_user_code.up.sql",
 		"000003_session_subject_id.up.sql",
 		"000004_scoped_removal_columns.up.sql",
+		"000005_pushed_authorization_requests.up.sql",
 	} {
 		body, err := os.ReadFile(filepath.Join(".", name))
 		if err != nil {

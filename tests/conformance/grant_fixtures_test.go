@@ -15,7 +15,7 @@ import (
 
 // Grant-family suite fixtures.
 //
-// The seven grant storage port suites each run against their own factory
+// The eight grant storage port suites each run against their own factory
 // built from NewStore with the matching store constructor, so every suite
 // case gets a brand-new empty store in its own schema:
 //
@@ -26,9 +26,10 @@ import (
 //	storagetest.RunPersistedGrantStoreSuite(t, factory, opts...)
 //	storagetest.RunDeviceFlowStoreSuite(t, factory, opts...)
 //	storagetest.RunBackchannelAuthenticationRequestStoreSuite(t, factory, opts...)
+//	storagetest.RunPushedAuthorizationRequestStoreSuite(t, factory, opts...)
 //
 // Each factory is independent: no schema name, pool, or constructor state is
-// shared between the seven entries (AC-3, AD-9).
+// shared between the eight entries (AC-3, AD-9).
 //
 // The MUST/MAY case counts in the comments below are those of storagetest
 // SuiteVersion 3.0.0 (wicket v0.8.0); re-count them on every suite bump.
@@ -116,6 +117,19 @@ func TestBackchannelAuthenticationRequestStoreSuite(t *testing.T) {
 	storagetest.RunBackchannelAuthenticationRequestStoreSuite(t,
 		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.BackchannelAuthenticationRequestStore {
 			return store.NewBackchannelAuthenticationRequestStore(pool, logger)
+		}),
+		storagetest.WithMay(true))
+}
+
+// TestPushedAuthorizationRequestStoreSuite runs the pushed authorization
+// request conformance suite (15 MUST cases plus the 2 MAY cases — returned
+// copy isolation and the credential — enabled via WithMay) against the pgx-backed adapter on a real
+// PostgreSQL server. The suite is skipped when WICKET_PG_TEST_DATABASE_URL is
+// unset.
+func TestPushedAuthorizationRequestStoreSuite(t *testing.T) {
+	storagetest.RunPushedAuthorizationRequestStoreSuite(t,
+		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.PushedAuthorizationRequestStore {
+			return store.NewPushedAuthorizationRequestStore(pool, logger)
 		}),
 		storagetest.WithMay(true))
 }

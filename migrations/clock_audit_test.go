@@ -61,7 +61,9 @@ func TestClockAuditMigrationsSQL(t *testing.T) {
 // cleanup method contains exactly the unified DELETE shape — an IS NOT NULL
 // guard, strict less-than against the parameterized cutoff, and no clock
 // function anywhere in the file. The session store uses its expires column;
-// all other stores use expires_at.
+// the pushed authorization request store uses its NOT NULL
+// retention_expiration column, so its statement carries no IS NOT NULL
+// guard; all other stores use expires_at.
 func TestClockAuditStoreCleanupSQL(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("..", "store", "*.go"))
 	if err != nil {
@@ -90,7 +92,8 @@ func TestClockAuditStoreCleanupSQL(t *testing.T) {
 		// statement cannot slip through.
 		grantShape := regexp.MustCompile(`"DELETE FROM \w+ WHERE expires_at IS NOT NULL AND expires_at < \$1"`)
 		sessionShape := regexp.MustCompile(`"DELETE FROM \w+ WHERE expires IS NOT NULL AND expires < \$1"`)
-		if !grantShape.MatchString(src) && !sessionShape.MatchString(src) {
+		retentionShape := regexp.MustCompile(`"DELETE FROM pushed_authorization_requests WHERE retention_expiration < \$1"`)
+		if !grantShape.MatchString(src) && !sessionShape.MatchString(src) && !retentionShape.MatchString(src) {
 			t.Errorf("%s: cleanup statement is not the unified shape "+
 				`"DELETE FROM <table> WHERE expires_at IS NOT NULL AND expires_at < $1"`, file)
 		}
@@ -101,6 +104,7 @@ func TestClockAuditStoreCleanupSQL(t *testing.T) {
 		// mentioning "concurrent".
 		for _, variant := range []string{
 			"expires_at <=", "expires <=", "expires_at IS NULL", "expires IS NULL",
+			"retention_expiration <=", "entry_expiration <", "entry_expiration <=",
 			"INTERVAL",
 		} {
 			if strings.Contains(src, variant) {
@@ -108,8 +112,8 @@ func TestClockAuditStoreCleanupSQL(t *testing.T) {
 			}
 		}
 	}
-	if cleanupFiles != 8 {
-		t.Errorf("expected 8 store files with cleanup methods, audited %d", cleanupFiles)
+	if cleanupFiles != 9 {
+		t.Errorf("expected 9 store files with cleanup methods, audited %d", cleanupFiles)
 	}
 }
 

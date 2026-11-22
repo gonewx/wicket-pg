@@ -2,7 +2,7 @@
 
 本文件是 wicket-pg 的 schema 设计记录（FR-5 / AD-4）：**逐表逐索引指名对应的端口方法**。维护者打开本文件即可追踪每一张表、每一个索引承载了哪条读写/清理路径；任何迁移 SQL 变更都应能在本记录中追到对应的读路径或清理路径。
 
-**盘点基线：** 迁移 `migrations/000001_init.up.sql`、`migrations/000002_device_flow_user_code.up.sql`、`migrations/000003_session_subject_id.up.sql`、`migrations/000004_scoped_removal_columns.up.sql` 与 `store/` 九个 store 实现（2026-08-08 逐行核对；2026-11-21 补入 000004 及 wicket v0.8.0 新增端口方法）。
+**盘点基线：** 迁移 `migrations/000001_init.up.sql`、`migrations/000002_device_flow_user_code.up.sql`、`migrations/000003_session_subject_id.up.sql`、`migrations/000004_scoped_removal_columns.up.sql`、`migrations/000005_pushed_authorization_requests.up.sql` 与 `store/` 十个 store 实现（2026-08-08 逐行核对；2026-11-21 补入 000004 及 wicket v0.8.0 新增端口方法；同日补入 000005 与 `PushedAuthorizationRequestStore`）。
 
 ---
 
@@ -35,12 +35,13 @@
 | `persisted_grants` | `key text PK`, `subject_id text NOT NULL`, `session_id text NOT NULL`, `client_id text NOT NULL`, `type text NOT NULL`, `expires_at timestamptz`（可空）, `payload jsonb NOT NULL` | `key` PK | `Store`（`ON CONFLICT (key)` upsert）/ `Get` / `GetAll`（多维过滤）/ `Remove` / `RemoveAll`（批量吊销）/ `RemoveExpired` | 四个过滤维度（subject/session/client/type）落真实列（AD-4），`ClientIds`/`Types` 用 `= ANY(...)` |
 | `device_codes` | `handle text PK`, `user_code text NOT NULL`, `session_id text`（可空，000004 增）, `expires_at timestamptz`（可空）, `payload jsonb NOT NULL` | `handle` PK + `user_code` 唯一索引 | `StoreDeviceAuthorization`（insert-only，双码重复拒绝，写 `session_id`）/ `FindByDeviceCode` / `FindByUserCode` / `UpdateByUserCode`（审批写入 session，同语句刷新 `session_id`）/ `RemoveByDeviceCode` / `RemoveDeviceCodesBySession`（一行承载双码，计数一次）/ `RemoveExpired` | 双码（device code + user code）双读路径；`user_code` 唯一索引同时承担写路径重复拒绝（见例外 5）；`session_id` 定位列（无 `client_id`，见例外 7） |
 | `backchannel_auth_requests` | `handle text PK`, `expires_at timestamptz`（可空）, `payload jsonb NOT NULL` | `handle` PK | `StoreBackchannelAuthenticationRequest`（insert-only）/ `FindBackchannelAuthenticationRequest` / `UpdateBackchannelAuthenticationRequest` / `RemoveBackchannelAuthenticationRequest` / `RemoveExpired` | 句柄取用；`ExpirationTime` 零值存 NULL（AD-5） |
+| `pushed_authorization_requests` | `key text PK`, `client_id text`（可空）, `creation_time timestamptz NOT NULL`, `entry_expiration timestamptz NOT NULL`, `retention_expiration timestamptz NOT NULL`, `payload jsonb NOT NULL`（迁移 000005 增） | `key` PK | `StorePushedAuthorizationRequest`（insert-only，写可见列）/ `GetPushedAuthorizationRequest`（读取不消费）/ `TakePushedAuthorizationRequest`（`DELETE ... WHERE key = $1 RETURNING payload` 单语句原子取出）/ `RemoveExpired`（按 `retention_expiration` 回收） | 按键单点取用与原子取出（AD-12）；键只经 `storage.PushedAuthorizationRequestKey` 生成；回收只看 `RetentionExpiration`；四个可见列只写不读（见例外 9） |
 | `sessions` | `session_id text PK`, `client_ids text[] NOT NULL`, `subject_id text`（可空，迁移 000003 增）, `expires timestamptz`（可空）, `payload jsonb NOT NULL` | `session_id` PK | `GetSession` / `CreateSession` / `UpdateSession` / `DeleteSession` / `GetSessionsBySubjectID` / `DeleteSessionsBySubjectID` / `AddClientID` / `DeleteExpired` | `AddClientID` 对 `client_ids` text[] 原子追加去重（AD-6）；批量吊销按 subject；清理走 **`expires` 列**（不是 `expires_at`，见例外 4） |
 | `key_records` | `handle text PK`, `public_id text NOT NULL`, `phase text NOT NULL`, `version bigint NOT NULL`, `payload jsonb NOT NULL` | `handle` PK + 部分唯一索引 | `Get` / `Create`（insert-only，双唯一约束）/ `Update`（`expectedVersion` 版本守卫）/ `Delete` / `List` | 唯一性列（AD-7）；版本守卫（AD-3）；**无清理方法**（见例外 2） |
 
 ---
 
-## 三、索引清单（23 个显式索引）
+## 三、索引清单（24 个显式索引）
 
 每个索引逐一指名支撑的读路径或清理路径及其方法名；索引与路径是双向核对关系——索引存在必有真实路径，真实路径列举在表清单中。
 
@@ -69,11 +70,13 @@
 | `idx_reference_tokens_session_id` | `reference_tokens (session_id)`（迁移 000004 增，可空列） | `ReferenceTokenStore.RemoveReferenceTokensBySession`（端口 `storage.ReferenceTokenStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
 | `idx_device_codes_session_id` | `device_codes (session_id)`（迁移 000004 增，可空列） | `DeviceFlowStore.RemoveDeviceCodesBySession`（端口 `storage.DeviceFlowStore`，wicket v0.8.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
 | `idx_user_consents_client_id` | `user_consents (client_id)`（迁移 000004 增索引；列为 000001 既有的 `NOT NULL` 列） | `UserConsentStore.RemoveUserConsentsByClient`（端口 `storage.UserConsentStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE client_id = $1` | 批量移除路径 |
+| `idx_pushed_authorization_requests_retention_expiration` | `pushed_authorization_requests (retention_expiration)`（迁移 000005 增） | `PushedAuthorizationRequestStore.RemoveExpired`（端口 `storage.PushedAuthorizationRequestStore`，wicket v0.8.0 起；Story 5.1 实现）：`DELETE ... WHERE retention_expiration < $1` | 清理路径（`NOT NULL` 列，无 `IS NOT NULL` 守卫，见例外 9） |
 
 ### 复合主键与单列主键（非显式索引名，同样指名）
 
 - 各表 `handle` / `session_id` / `key` 单列 PK 索引支撑全部单点取用读路径（`Get*`/`FindBy*` 的 `WHERE <pk> = $1`）与 upsert 的 `ON CONFLICT` 目标（AD-10）。
 - `authorization_codes` 的 `handle` PK 还支撑 `AuthorizationCodeStore.TakeAuthorizationCode` 的原子取出路径：`DELETE ... WHERE handle = $1 RETURNING payload` 单语句完成定位、删除与返回（AD-12），不先 SELECT 再 DELETE、不开显式事务。
+- `pushed_authorization_requests` 的 `key` PK 支撑 `PushedAuthorizationRequestStore.GetPushedAuthorizationRequest`（`WHERE key = $1`）、`PushedAuthorizationRequestStore.TakePushedAuthorizationRequest` 的原子取出（`DELETE ... WHERE key = $1 RETURNING payload`，AD-12）与 `PushedAuthorizationRequestStore.StorePushedAuthorizationRequest` 的重复拒绝（SQLSTATE 23505 → `storage.ErrDuplicateHandle`）。
 - `user_consents` 复合 PK `(subject_id, client_id)` 支撑 `GetUserConsent`（全对匹配 `WHERE subject_id = $1 AND client_id = $2`）、`GetAllUserConsents`（`subject_id` 前缀匹配 `WHERE subject_id = $1`）与 `StoreUserConsent` 的 `ON CONFLICT (subject_id, client_id)` 目标。
 
 ---
@@ -81,13 +84,19 @@
 ## 四、例外与设计决策
 
 1. **`reference_tokens` 无 subject 过滤列，仅按 subject + client 对吊销（`RemoveReferenceTokens`）走 payload 扫描**（按 client / 按 session 移除走定位列，见例外 7）：000004 增了 `client_id` / `session_id` 定位列（服务按条件移除，见例外 7），但 subject 仍不落列，`RemoveReferenceTokens(ctx, subjectId, clientId)` 仍全表 `SELECT handle, payload` 后按模型字段匹配，再 `DELETE ... WHERE handle = ANY($1)`（`store/reference_token.go`）——有意的设计决策：表不落过滤真实列（AD-4 真实列最小集），该路径**不需要索引**。AC-2 的「每个索引都能对上路径」不应被误读成「每条路径都要有索引」。
-2. **`key_records` 没有 `expires_at` 列、没有清理方法**：密钥退役由核心侧协调（`store/key_records.go` 无 `RemoveExpired`/`DeleteExpired`），是九个 store 中唯一无清理入口的。不为它虚构清理路径。
+2. **`key_records` 没有 `expires_at` 列、没有清理方法**：密钥退役由核心侧协调（`store/key_records.go` 无 `RemoveExpired`/`DeleteExpired`），是十个 store 中唯一无清理入口的。不为它虚构清理路径。
 3. **`sessions.subject_id` 可空**：空 subject 存 NULL，永不命中 `WHERE subject_id = $1`（`store/session.go`，镜像内存语义）——`idx_sessions_subject_id` 对 NULL 无命中是正确语义，不是缺陷。
 4. **`sessions.expires` 列名例外**：清理列是 `expires` 不是 `expires_at`（`store/session.go` `DeleteExpired`）——统一清理形态中「session 为 `expires` 列」的特例（AD-5）。
 5. **`device_codes.user_code` 唯一索引双职责**：既支撑 `FindByUserCode`/`UpdateByUserCode` 读路径，又承担 insert-only 的重复拒绝（SQLSTATE 23505 → `storage.ErrDuplicateHandle`）——索引条目须同时指名两类路径。
 6. **`user_consents` 无独立 subject 索引**：`GetAllUserConsents` 走复合 PK 的前缀匹配，无需额外索引——反向核对时不要误报「缺索引」。
 7. **按条件移除的定位列（000004）**：`authorization_codes` / `refresh_tokens` / `reference_tokens` 落 `client_id` + `session_id`，`device_codes` 只落 `session_id`（设备流端口无按 client 移除，AD-4 真实列最小集），`user_consents` 已有 `client_id` 列但复合 PK 前导列为 `subject_id`，故为按 client 移除单建索引。值在写入时取自模型（引用令牌的 session 取 `Token.SessionId()`，即 `Type` 为 `sid` 的 claim 恰好一个、且其值为字符串时取该值；多于一个——不论值类型——或唯一一个不是字符串时为空），`UpdateRefreshToken` / `UpdateByUserCode` 同语句刷新，不残留陈旧值。**空值存 NULL**（沿例外 3 的 `sessions.subject_id` 先例）：NULL 不参与等值匹配，按空参数移除永不命中无 client / session 的记录。存量行由 000004 在同一迁移事务内从 payload 容器解码回填，回填语义与 Go 侧逐条一致（`tests/e2e/scoped_removal_columns_e2e_test.go` 直接列断言）。**部署顺序：执行 000004 之前须停掉所有旧版本写入方**——迁移后旧二进制的 INSERT 会留下 NULL 定位列、旧二进制的 `UpdateRefreshToken` / `UpdateByUserCode` 会留下陈旧值，回填只在迁移事务内执行一次，事后不会补齐，按条件移除会漏删这些行。
 8. **4.1 → 4.2 过渡期已结束**：8 个定位列索引支撑的按条件移除方法已随 wicket v0.8.0 升级原子落地（Story 4.2），索引条目均为「store 类型名 + 点号 + 方法名」的完整引用，由静态盘点 `TestSchemaRecordStoreMethods` 强制核对方法存在。空参数在 Go 侧短路返回 `(0, nil)`、不发 SQL：定位列的 NULL 只是第二道防线，`user_consents.client_id` 为 `NOT NULL` 列、空 ClientId 以空串存储，`WHERE client_id = ''` 会命中，因此 Go 侧短路是正确性要求。
+
+9. **`pushed_authorization_requests` 的可见列只写不读（000005）**：`client_id`、`creation_time`、`entry_expiration`、`retention_expiration` 四列在 `StorePushedAuthorizationRequest` 写入时从模型复制（空 ClientId 存 NULL），只服务运维查询和将来的索引；`Get` / `Take` **只**从 `payload` 解码模型，从不由列重建，因为 `timestamptz` 只精确到微秒，模型时间可能带纳秒。这是 AD-4「不把模型摊成 schema」的登记例外：列存在，但模型的唯一来源仍是 payload，模型演进时这些列不必跟着动。其余约定：
+   - 整个模型（含不透明的 `Payload []byte`）经 payload codec 写入版本容器；`Payload` 可能含 NUL 与非法 UTF-8，只以 base64 形式进入 jsonb，不原样写入任何列。
+   - 回收列沿用模型字段名 `retention_expiration`，不叫 `expires_at`：端口区分 `EntryExpiration`（入口有效期，由核心判定，不驱动回收）和 `RetentionExpiration`（入口有效期加交互往返宽限，回收只看它），叫 `expires_at` 会被误读为前者。
+   - 回收 SQL 为 `DELETE ... WHERE retention_expiration < $1`：列为 `NOT NULL`，不写 `IS NOT NULL` 守卫，也不做零值转 NULL；零值 `RetentionExpiration` 照常存储，任何晚于零时刻的 cutoff 都会回收它。这是统一清理形态（第一节）在本表的变体，`migrations/clock_audit_test.go` 单独固定其形态。
+   - 端口没有按 client 枚举或移除的路径，`client_id` 不建索引（AD-4 每个查询列须配索引，反之无查询路径的列不配索引）；键只经 `storage.PushedAuthorizationRequestKey` 生成，store 不生成、不拼接键。
 
 ---
 

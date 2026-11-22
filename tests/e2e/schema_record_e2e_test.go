@@ -189,28 +189,29 @@ func TestE2ESchemaRecordIndexDefinitionsMatchPaths(t *testing.T) {
 	defs := liveIndexDefinitions(t, pool)
 
 	want := map[string]indexDefinition{
-		"idx_authorization_codes_expires_at":       {columns: []string{"expires_at"}},
-		"idx_refresh_tokens_expires_at":            {columns: []string{"expires_at"}},
-		"idx_reference_tokens_expires_at":          {columns: []string{"expires_at"}},
-		"idx_user_consents_expires_at":             {columns: []string{"expires_at"}},
-		"idx_persisted_grants_expires_at":          {columns: []string{"expires_at"}},
-		"idx_device_codes_expires_at":              {columns: []string{"expires_at"}},
-		"idx_backchannel_auth_requests_expires_at": {columns: []string{"expires_at"}},
-		"idx_sessions_expires":                     {columns: []string{"expires"}},
-		"idx_persisted_grants_subject_id":          {columns: []string{"subject_id", "client_id", "type"}},
-		"idx_authorization_codes_client_id":        {columns: []string{"client_id"}},
-		"idx_authorization_codes_session_id":       {columns: []string{"session_id"}},
-		"idx_refresh_tokens_client_id":             {columns: []string{"client_id"}},
-		"idx_refresh_tokens_session_id":            {columns: []string{"session_id"}},
-		"idx_reference_tokens_client_id":           {columns: []string{"client_id"}},
-		"idx_reference_tokens_session_id":          {columns: []string{"session_id"}},
-		"idx_device_codes_session_id":              {columns: []string{"session_id"}},
-		"idx_user_consents_client_id":              {columns: []string{"client_id"}},
-		"idx_persisted_grants_session_id":          {columns: []string{"session_id"}},
-		"idx_persisted_grants_client_id":           {columns: []string{"client_id", "type"}},
-		"idx_persisted_grants_type":                {columns: []string{"type"}},
-		"idx_device_codes_user_code":               {columns: []string{"user_code"}, unique: true},
-		"idx_sessions_subject_id":                  {columns: []string{"subject_id"}},
+		"idx_authorization_codes_expires_at":                     {columns: []string{"expires_at"}},
+		"idx_refresh_tokens_expires_at":                          {columns: []string{"expires_at"}},
+		"idx_reference_tokens_expires_at":                        {columns: []string{"expires_at"}},
+		"idx_user_consents_expires_at":                           {columns: []string{"expires_at"}},
+		"idx_persisted_grants_expires_at":                        {columns: []string{"expires_at"}},
+		"idx_device_codes_expires_at":                            {columns: []string{"expires_at"}},
+		"idx_backchannel_auth_requests_expires_at":               {columns: []string{"expires_at"}},
+		"idx_sessions_expires":                                   {columns: []string{"expires"}},
+		"idx_persisted_grants_subject_id":                        {columns: []string{"subject_id", "client_id", "type"}},
+		"idx_authorization_codes_client_id":                      {columns: []string{"client_id"}},
+		"idx_authorization_codes_session_id":                     {columns: []string{"session_id"}},
+		"idx_refresh_tokens_client_id":                           {columns: []string{"client_id"}},
+		"idx_refresh_tokens_session_id":                          {columns: []string{"session_id"}},
+		"idx_reference_tokens_client_id":                         {columns: []string{"client_id"}},
+		"idx_reference_tokens_session_id":                        {columns: []string{"session_id"}},
+		"idx_device_codes_session_id":                            {columns: []string{"session_id"}},
+		"idx_user_consents_client_id":                            {columns: []string{"client_id"}},
+		"idx_persisted_grants_session_id":                        {columns: []string{"session_id"}},
+		"idx_persisted_grants_client_id":                         {columns: []string{"client_id", "type"}},
+		"idx_persisted_grants_type":                              {columns: []string{"type"}},
+		"idx_device_codes_user_code":                             {columns: []string{"user_code"}, unique: true},
+		"idx_sessions_subject_id":                                {columns: []string{"subject_id"}},
+		"idx_pushed_authorization_requests_retention_expiration": {columns: []string{"retention_expiration"}},
 		// Partial unique index: public_id is unique only among non-retired
 		// records (AD-7), the premise KeyRecordStore.Create relies on.
 		"idx_key_records_public_id_unique": {columns: []string{"public_id"}, unique: true, predicate: "phase <> 'retired'"},
@@ -246,8 +247,10 @@ func TestE2ESchemaRecordIndexDefinitionsMatchPaths(t *testing.T) {
 }
 
 // cleanupPath describes one record-declared cleanup path: the table, the
-// expiry column (sessions uses "expires", everything else "expires_at"),
-// and the index that must serve the DELETE.
+// expiry column (sessions uses "expires", pushed authorization requests
+// "retention_expiration", everything else "expires_at"), and the index that
+// must serve the DELETE. retention_expiration is NOT NULL, so the IS NOT
+// NULL guard of the probe query is redundant for it but harmless.
 type cleanupPath struct {
 	table string
 	col   string
@@ -263,6 +266,7 @@ var cleanupPaths = []cleanupPath{
 	{"device_codes", "expires_at", "idx_device_codes_expires_at"},
 	{"backchannel_auth_requests", "expires_at", "idx_backchannel_auth_requests_expires_at"},
 	{"sessions", "expires", "idx_sessions_expires"},
+	{"pushed_authorization_requests", "retention_expiration", "idx_pushed_authorization_requests_retention_expiration"},
 }
 
 // TestE2ESchemaRecordCleanupPathsHitTheirIndexes verifies the record's

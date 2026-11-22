@@ -20,6 +20,7 @@ var (
 	_ storage.PersistedGrantStore                   = (*PersistedGrantStore)(nil)
 	_ storage.DeviceFlowStore                       = (*DeviceFlowStore)(nil)
 	_ storage.BackchannelAuthenticationRequestStore = (*BackchannelAuthenticationRequestStore)(nil)
+	_ storage.PushedAuthorizationRequestStore       = (*PushedAuthorizationRequestStore)(nil)
 	_ session.Store                                 = (*SessionStore)(nil)
 	_ keymgmt.RecordStore                           = (*KeyRecordStore)(nil)
 )

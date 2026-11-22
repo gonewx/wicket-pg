@@ -223,7 +223,7 @@ func indexExistsIn(t *testing.T, pool *pgxpool.Pool, schema, name string) bool {
 	return exists
 }
 
-// businessTables lists every table the initial migration creates, mirroring
+// businessTables lists every business table the migrations create, mirroring
 // the story 1.1 e2e assertion list (own copy: test helpers never import
 // across packages).
 var businessTables = []string{
@@ -236,6 +236,7 @@ var businessTables = []string{
 	"backchannel_auth_requests",
 	"sessions",
 	"key_records",
+	"pushed_authorization_requests",
 }
 
 var expectedIndexes = []string{
@@ -262,4 +263,5 @@ var expectedIndexes = []string{
 	"idx_reference_tokens_session_id",
 	"idx_device_codes_session_id",
 	"idx_user_consents_client_id",
+	"idx_pushed_authorization_requests_retention_expiration",
 }

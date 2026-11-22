@@ -2,8 +2,9 @@
 // This file is part of wicket-pg, an independent original work.
 
 // Package e2e_test pins the unified expiry reclamation semantics across all
-// eight lifecycle stores against the real schema: RemoveExpired on the seven
-// grant-family stores and DeleteExpired on the session store each reclaim
+// nine lifecycle stores against the real schema: RemoveExpired on the eight
+// grant-family stores (the pushed authorization request store reclaims on
+// retention_expiration) and DeleteExpired on the session store each reclaim
 // only records whose stored expiry strictly precedes the caller-supplied
 // cutoff — boundary records (expires_at == cutoff) survive, NULL-expiry
 // records are never touched, the returned count matches the deleted rows
@@ -42,7 +43,7 @@ type reclamationFixture struct {
 	reclaim                        func(ctx context.Context, cutoff time.Time) (int, error)
 }
 
-// TestE2EExpiryReclamationUnified is the unified eight-store reclamation
+// TestE2EExpiryReclamationUnified is the unified nine-store reclamation
 // matrix (AC-1/AC-2/AC-4/AC-5): one table-driven case per lifecycle store,
 // each seeding expired / boundary / alive / NULL-expiry records and driving
 // the same assertion sequence — pre-cleanup readability of expired records,
@@ -61,6 +62,7 @@ func TestE2EExpiryReclamationUnified(t *testing.T) {
 		{"persisted_grant", seedPersistedGrantReclamation},
 		{"device_flow", seedDeviceFlowReclamation},
 		{"backchannel", seedBackchannelReclamation},
+		{"pushed_authorization_request", seedPushedAuthorizationRequestReclamation},
 		{"session", seedSessionReclamation},
 	}
 	for _, tc := range cases {
@@ -383,6 +385,50 @@ func seedBackchannelReclamation(t *testing.T, pool *pgxpool.Pool) reclamationFix
 		null:     "reclaim-bc-null",
 		read: func(ctx context.Context, key string) error {
 			_, err := s.FindBackchannelAuthenticationRequest(ctx, key)
+			return err
+		},
+		notFound: storage.ErrNotFound,
+		reclaim:  s.RemoveExpired,
+	}
+}
+
+// seedPushedAuthorizationRequestReclamation seeds the retention_expiration
+// family: reclamation looks at RetentionExpiration only, a NOT NULL column
+// with no NULL form. Each record's EntryExpiration already precedes the
+// first cutoff, so the boundary and alive survivors also show that a passed
+// entry expiration does not drive reclamation.
+func seedPushedAuthorizationRequestReclamation(t *testing.T, pool *pgxpool.Pool) reclamationFixture {
+	t.Helper()
+	s := store.NewPushedAuthorizationRequestStore(pool, discardLogger())
+	keys := map[string]string{
+		"expired":  parKey(t, "reclaim-par-expired"),
+		"boundary": parKey(t, "reclaim-par-boundary"),
+		"alive":    parKey(t, "reclaim-par-alive"),
+	}
+	requests := []struct {
+		key       string
+		retention time.Time
+	}{
+		{keys["expired"], fixedExpired},
+		{keys["boundary"], fixedNow}, // retention_expiration == cutoff, must survive
+		{keys["alive"], fixedAlive},
+	}
+	for _, r := range requests {
+		if err := s.StorePushedAuthorizationRequest(t.Context(), r.key, &models.PushedAuthorizationRequest{
+			ClientId:            "client-reclaim",
+			CreationTime:        fixedExpired.Add(-time.Hour),
+			EntryExpiration:     fixedExpired.Add(-time.Minute),
+			RetentionExpiration: r.retention,
+		}); err != nil {
+			t.Fatalf("StorePushedAuthorizationRequest (%s): %v", r.key, err)
+		}
+	}
+	return reclamationFixture{
+		expired:  keys["expired"],
+		boundary: keys["boundary"],
+		alive:    keys["alive"],
+		read: func(ctx context.Context, key string) error {
+			_, err := s.GetPushedAuthorizationRequest(ctx, key)
 			return err
 		},
 		notFound: storage.ErrNotFound,
