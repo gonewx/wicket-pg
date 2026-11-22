@@ -42,15 +42,52 @@ WICKET_PG_TEST_DATABASE_URL=... GOWORK=off go test ./tests/e2e/...          # = 
 ## 三、发布流程
 
 1. **功能与测试就绪**：全量回归绿（见上）；`git status` 干净；story 交付物齐全。
-2. **版本号同步**：打 tag 前确认 `README.md` 引用版本、`go.mod` 依赖（wicket 侧）与实际一致。
-3. **打 tag**（轻量 tag）：
+2. **版本号同步**：打 tag 前确认 `README.md` 引用版本、`go.mod` 依赖（wicket 侧）与实际一致，`CHANGELOG.md` 已写好该版本条目（英文，功能中性），且条目日期等于实际打 tag 的日期（不一致先改日期并提交）。
+3. **CI 确认**（打 tag 前）：push 主干后 CI 三个 job（`lineage-gates` / `build` / `conformance`）均为 success，且该 run 的 head sha 等于要打 tag 的提交。未满足不得进入下一步。
+4. **打 tag**（轻量 tag）：
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-4. **发版纪律**：
+5. **取用验证**（tag push 后立即执行）：在仓外空目录，用默认 GOPROXY（`proxy.golang.org`）与 checksum 数据库、本地工具链和全新的模块缓存，按消费者方式 `go get` 新 tag 并编译一个引用 `store` 与 `migrations` 的 main 包。本机 `go env GOPROXY` 若为镜像（如 `goproxy.cn`），必须按下面显式覆盖；`GOPRIVATE` / `GONOPROXY` / `GONOSUMDB` 一并置空，否则验证会绕过 proxy 与 sumdb，测不到分发层问题。v0.1.0 的分发层分裂正是缺少这一步的结果。整段在子 shell 中执行，`cd` 与环境变量不会泄漏到当前 shell，任一步失败即停止：
+
+```bash
+(
+  set -e
+  V=v0.2.0; WICKET=v0.8.0
+  D=$(mktemp -d); trap 'chmod -R u+w "$D" 2>/dev/null; rm -rf "$D"' EXIT
+  mkdir -p "$D/mod" "$D/cache" && cd "$D/mod"
+  export GOWORK=off GOTOOLCHAIN=local GOFLAGS= \
+    GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org \
+    GOPRIVATE= GONOPROXY= GONOSUMDB= GOMODCACHE="$D/cache"
+  go mod init example.com/consume
+  printf '%s\n' 'package main' '' 'import (' \
+    '	_ "github.com/gonewx/wicket-pg/migrations"' \
+    '	_ "github.com/gonewx/wicket-pg/store"' ')' '' 'func main() {}' > main.go
+  go get "github.com/gonewx/wicket-pg@$V"
+  go mod tidy
+  go build ./...
+  test "$(go list -m -f '{{.Version}}' github.com/gonewx/wicket-pg)" = "$V"
+  test "$(go list -m -f '{{.Version}}' github.com/gonewx/wicket)" = "$WICKET"
+  go clean -modcache   # 模块缓存文件只读，先清缓存，EXIT 时再 rm -rf "$D"
+  echo "consume check OK: wicket-pg $V, wicket $WICKET"
+)
+```
+
+   任一步失败：先上报，不重打、不移动、不删除 tag；修正只能通过发新补丁版本（如 v0.2.1）完成。
+
+6. **创建 GitHub Release**（在仓库根目录执行）：发布说明从 `CHANGELOG.md` 截取该版本条目（`## [x.y.z]` 标题之后、下一个 `## ` 标题之前），与仓内同文；`--verify-tag` 保证 tag 不存在时失败而不是由 gh 自建 tag：
+
+```bash
+V=v0.2.0
+awk -v h="## [${V#v}]" 'index($0,h)==1{f=1;next} f&&/^## /{exit} f' CHANGELOG.md > "/tmp/notes-$V.md"
+test -s "/tmp/notes-$V.md"
+NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh release create "$V" -R gonewx/wicket-pg --verify-tag --title "$V" --notes-file "/tmp/notes-$V.md"
+```
+
+7. **发版纪律**：
    - **Go 版本标记两处形态不同且各自精确**：`go.mod` 的 `go 1.27` 是对下游的语言版本承诺（不带补丁号），`ci.yml` 的 `1.27.0` 是本仓构建环境 pin（取精确补丁版）。rc 已于 Go 1.27.0 发布后去除，`tests/e2e/ci_job_e2e_test.go` 分别精确比对两者，预发布值一律不得通过。
    - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译；v0.1.1 与 v0.1.2 可用但仍携带 rc directive——文档在 v0.1.x 线内只引用 v0.1.3（首个不携带 rc directive 的版本，也是与 wicket v0.1.x 组合时应停留的版本）；面向 wicket v0.8.0 的安装与升级引用 v0.2.0。
    - 提交信息保持功能中性（门禁扫全量 git 历史）。
