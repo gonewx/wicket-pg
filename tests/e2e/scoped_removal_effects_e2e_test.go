@@ -231,11 +231,14 @@ func revert000004AndUp(t *testing.T, pool *pgxpool.Pool) {
 }
 
 // TestE2EScopedRemovalRemovesBackfilledRows asserts that rows written before
-// 000004 and backfilled by it are found by all eight scoped removal methods:
+// 000004 are found by all eight scoped removal methods once 000004 runs again:
 // each returns the exact count, its targets are gone from the table, and
-// every other row stays. The suites never write data before a migration, so
-// a backfill that left the columns NULL would pass them while silently
-// skipping every pre-existing record.
+// every other row stays. For the seven grant methods the rows are reached
+// through the locator columns 000004 backfills from the payload; the suites
+// never write data before a migration, so a backfill that left the columns
+// NULL would pass them while silently skipping every pre-existing record.
+// user_consents.client_id predates 000004 (which only indexes it), so the
+// consent case shows that pre-000004 consents stay removable, not a backfill.
 func TestE2EScopedRemovalRemovesBackfilledRows(t *testing.T) {
 	pool := newScratchPool(t)
 	if err := migrations.Up(t.Context(), pool); err != nil {
@@ -307,7 +310,9 @@ func TestE2EScopedRemovalAfterLocatorUpdate(t *testing.T) {
 	ctx := t.Context()
 	refresh := store.NewRefreshTokenStore(pool, discardLogger())
 
-	store1 := func(handle string) {
+	// store1 takes the subtest's own t: a Fatalf on the parent t from inside
+	// t.Run would be reported as a FailNow on a parent test.
+	store1 := func(t *testing.T, handle string) {
 		t.Helper()
 		if err := refresh.StoreRefreshToken(ctx, handle, &models.RefreshToken{
 			ClientId: "client-a", SessionId: "sess-a", CreationTime: fixedNow, Lifetime: 300}); err != nil {
@@ -320,7 +325,7 @@ func TestE2EScopedRemovalAfterLocatorUpdate(t *testing.T) {
 	}
 
 	t.Run("by client", func(t *testing.T) {
-		store1("rt-moved-client")
+		store1(t, "rt-moved-client")
 		n, err := refresh.RemoveRefreshTokensByClient(ctx, "client-a")
 		assertRemoved(t, "refresh_tokens by old client client-a", n, err, 0)
 		assertHandles(t, pool, "refresh_tokens", true, "rt-moved-client")
@@ -330,7 +335,7 @@ func TestE2EScopedRemovalAfterLocatorUpdate(t *testing.T) {
 	})
 
 	t.Run("by session", func(t *testing.T) {
-		store1("rt-moved-session")
+		store1(t, "rt-moved-session")
 		n, err := refresh.RemoveRefreshTokensBySession(ctx, "sess-a")
 		assertRemoved(t, "refresh_tokens by old session sess-a", n, err, 0)
 		assertHandles(t, pool, "refresh_tokens", true, "rt-moved-session")

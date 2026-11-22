@@ -210,8 +210,10 @@ func TestE2EConformanceJobRunsE2ESuite(t *testing.T) {
 
 // TestE2EConformanceJobFailurePropagates verifies AC-3: a failing suite
 // turns the job red. The Contract suites step runs go test (non-zero exit
-// on failure), carries no continue-on-error, and is not gated by an
-// if-condition that could swallow the failure or skip the step.
+// on failure); neither the job nor any of its steps (Contract suites and
+// E2E included) carries continue-on-error, and no step is gated by an
+// if-condition that could swallow the failure or skip the step. The E2E
+// step's go test command is pinned by TestE2EConformanceJobRunsE2ESuite.
 func TestE2EConformanceJobFailurePropagates(t *testing.T) {
 	raw, _ := readCIWorkflow(t)
 	conformance := requireJob(t, raw, "conformance")
