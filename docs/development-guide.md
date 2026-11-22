@@ -63,7 +63,7 @@ GOWORK=off go test ./tests/e2e/...
 
 ### 4.4 本地等价验证（无 Docker 时的降级方案）
 
-如果无法跑容器，CI 绿的前提条件是：门禁绿（4.1）+ 构建绿（三）+ 契约套件绿（4.3）。无法本地复验契约套件时，push 后到 Actions 页确认三个 job 全绿即可（见 deployment-guide.md）。
+如果无法跑容器，CI 绿的前提条件是：门禁绿（4.1）+ 构建绿（三）+ 契约套件与 e2e 绿（4.3，CI 的 `conformance` job 两者都跑）。无法本地复验契约套件时，push 后到 Actions 页确认三个 job 全绿即可（见 deployment-guide.md）。
 
 ## 五、日常开发任务
 
@@ -79,7 +79,7 @@ GOWORK=off go test ./tests/e2e/...
 
 1. `GOWORK=off go build ./...` 通过
 2. `GOWORK=off go test ./...` 通过（单测与门禁）
-3. 契约套件/e2e 本地有库则跑；无库则 push 后确认 CI
+3. 契约套件/e2e 本地有库则跑；无库则 push 后确认 CI——CI 的 `conformance` job 在 `postgres:15` 上同时跑契约套件（`Contract suites` 步骤）与 e2e（`E2E` 步骤），两者在 CI 中都不会 skip
 4. 每个 `.go` 文件首行是 `// Copyright 2026 Decker.`（门禁会查）
 5. commit message 保持功能中性（门禁会扫全量历史）——详见 contribution-guide.md
 

@@ -28,11 +28,11 @@ import (
 
 const readmePath = "README.md"
 
-// wantReleaseVersion is the release this README documents. v0.1.3 is the first
-// release whose go directive names the Go 1.27.0 release instead of a
-// prerelease; v0.1.1 and v0.1.2 remain consumable but still carry the rc
-// directive, and published tags are immutable.
-const wantReleaseVersion = "v0.1.3"
+// wantReleaseVersion is the release this README documents: v0.2.0, the first
+// release that requires wicket v0.8.0 (suite version 3.0.0) and ships
+// migration 000004. Hosts still on wicket v0.1.x keep v0.1.3, which the
+// upgrade section names separately.
+const wantReleaseVersion = "v0.2.0"
 
 // TestE2EReadmeInstallCommandPinsRealModule verifies AC-1: the install
 // command uses the GOWORK=off form (the external workspace would otherwise
@@ -46,22 +46,54 @@ func TestE2EReadmeInstallCommandPinsRealModule(t *testing.T) {
 	goMod := readFile(t, filepath.Join(repoRoot(t), "go.mod"))
 
 	// Built from the module path go.mod actually declares, and anchored on a
-	// word boundary: a bare substring check would also accept @v0.1.30 or
-	// @v0.1.3-rc.1, letting a prerelease or an unrelated release satisfy it.
+	// word boundary: a bare substring check would also accept a prerelease
+	// such as @v0.2.0-rc.1, letting it satisfy the check.
 	install := "GOWORK=off go get " + modulePathOf(t, goMod) + "@" + wantReleaseVersion
 	if !regexp.MustCompile(regexp.QuoteMeta(install) + `(\s|$)`).MatchString(readme) {
 		t.Errorf("README must show the install command %q", install)
 	}
 
-	// The Status and Prerequisites sections name the version too. Without
-	// these, only the install command would move on a release and the document
-	// would advertise one version while installing another.
+	// The Status section names the version too. Without it, only the install
+	// command would move on a release and the document would advertise one
+	// version while installing another. Anchored like the install command, so
+	// "use v0.2.0-rc.1" does not pass; a sentence-ending period is allowed.
+	claim := "use " + wantReleaseVersion
+	if !regexp.MustCompile(regexp.QuoteMeta(claim) + `([\s,;:)]|\.(\s|$)|$)`).MatchString(readme) {
+		t.Errorf("README must carry the version claim %q", claim)
+	}
+
+	// Prerequisites names the wicket version this module actually requires,
+	// read from go.mod, so a dependency bump fails here until the README moves.
+	if claim := "this module requires wicket " + requiredVersionOf(t, goMod, "github.com/gonewx/wicket"); !strings.Contains(readme, claim) {
+		t.Errorf("README Prerequisites must carry %q", claim)
+	}
+
+	// The go directive history is a fixed fact about past tags, not about the
+	// documented release: v0.1.3 was the first tag whose directive names the
+	// Go 1.27.0 release, so the claim stays pinned to v0.1.3 on every release.
+	if claim := "from v0.1.3 onward"; !strings.Contains(readme, claim) {
+		t.Errorf("README must carry the go directive history claim %q", claim)
+	}
+}
+
+// TestE2EReadmeUpgradeSectionNamesMigrationAndFallback verifies the upgrade
+// guidance a v0.1.x host depends on: stop every old writer first (rows an old
+// build writes after the migration are never backfilled), apply migration
+// 000004 (the removal-by-client and removal-by-session methods query the
+// locator columns it adds and backfills), never back out with
+// migrations.Down (it drops every table), and stay on v0.1.3 while wicket
+// v0.1.x is in use (v0.2.0 raises the host's wicket requirement to v0.8.0).
+func TestE2EReadmeUpgradeSectionNamesMigrationAndFallback(t *testing.T) {
+	readme := readFile(t, filepath.Join(repoRoot(t), readmePath))
+
 	for _, claim := range []string{
-		"use " + wantReleaseVersion,
-		"from " + wantReleaseVersion + " onward",
+		"Stop every writer still running a v0.1.x build",
+		"apply migration 000004",
+		"Do not use `migrations.Down` to back out `000004`",
+		"stay on v0.1.3",
 	} {
 		if !strings.Contains(readme, claim) {
-			t.Errorf("README must carry the version claim %q", claim)
+			t.Errorf("README upgrade guidance must carry %q", claim)
 		}
 	}
 }
@@ -188,6 +220,18 @@ func storeConstructors(t *testing.T) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// requiredVersionOf returns the version go.mod requires for module, from
+// either a single-line require or a require block entry.
+func requiredVersionOf(t *testing.T, goMod, module string) string {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^\s*(?:require\s+)?` + regexp.QuoteMeta(module) + `\s+(v\S+)`)
+	m := re.FindStringSubmatch(goMod)
+	if m == nil {
+		t.Fatalf("go.mod does not require %s", module)
+	}
+	return m[1]
 }
 
 // modulePathOf extracts the module path from the go.mod module directive.

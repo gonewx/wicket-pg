@@ -1,6 +1,6 @@
 # wicket-pg API 契约
 
-> 面向读者的任务：宿主集成时知道要注入什么、能调用什么；维护者知道公共面形态。本仓是 Go 库，无 HTTP API——「API 契约」指三个公开包 `store`、`migrations` 与 `tests/conformance` 的公共面。所有签名以源码为准（本文件 2026-08-08 核对）。
+> 面向读者的任务：宿主集成时知道要注入什么、能调用什么；维护者知道公共面形态。本仓是 Go 库，无 HTTP API——「API 契约」指三个公开包 `store`、`migrations` 与 `tests/conformance` 的公共面。所有签名以源码为准（本文件 2026-11-21 按 wicket v0.8.0 依赖核对）。
 
 ## 一、包与依赖
 
@@ -10,7 +10,7 @@
 | `migrations` | `github.com/gonewx/wicket-pg/migrations` | schema 迁移入口 |
 | `tests/conformance` | `github.com/gonewx/wicket-pg/tests/conformance` | 契约套件接入（测试用，宿主一般不需要） |
 
-依赖：`github.com/gonewx/wicket v0.1.4`（v0.1.3 起 ClaimsIdentity JSON 回环无损，此前版本的 codec 会丢 subject claims；v0.1.4 在其上无生产代码改动）、`github.com/jackc/pgx/v5 v5.10.0`。
+依赖：`github.com/gonewx/wicket v0.8.0`（三套契约套件 `SuiteVersion` 均为 `3.0.0`；`TakeAuthorizationCode` 与 7 个 ByClient / BySession 方法自 wicket v0.5.0 起进入端口，`RemoveDeviceCodesBySession` 自 v0.8.0 起）、`github.com/jackc/pgx/v5 v5.10.0`。
 
 ## 二、store 包
 
@@ -37,6 +37,9 @@ func NewKeyRecordStore(pool *pgxpool.Pool, logger *slog.Logger) *KeyRecordStore
 func (s *AuthorizationCodeStore) StoreAuthorizationCode(ctx context.Context, handle string, code *models.AuthorizationCode) error  // insert-only
 func (s *AuthorizationCodeStore) GetAuthorizationCode(ctx context.Context, handle string) (*models.AuthorizationCode, error)
 func (s *AuthorizationCodeStore) RemoveAuthorizationCode(ctx context.Context, handle string) error
+func (s *AuthorizationCodeStore) TakeAuthorizationCode(ctx context.Context, handle string) (*models.AuthorizationCode, error)  // 原子取出（AD-12），未命中返 ErrNotFound
+func (s *AuthorizationCodeStore) RemoveAuthorizationCodesByClient(ctx context.Context, clientId string) (int, error)  // 按条件移除（AD-13），返回删除条数
+func (s *AuthorizationCodeStore) RemoveAuthorizationCodesBySession(ctx context.Context, sessionId string) (int, error)
 func (s *AuthorizationCodeStore) RemoveExpired(ctx context.Context, cutoff time.Time) (int, error)
 func (s *AuthorizationCodeStore) ConformsTo() string
 ```
@@ -48,6 +51,8 @@ func (s *RefreshTokenStore) StoreRefreshToken(ctx context.Context, handle string
 func (s *RefreshTokenStore) GetRefreshToken(ctx context.Context, handle string) (*models.RefreshToken, error)
 func (s *RefreshTokenStore) UpdateRefreshToken(ctx context.Context, handle string, token *models.RefreshToken, expectedVersion int) error  // 版本冲突返 ErrVersionConflict
 func (s *RefreshTokenStore) RemoveRefreshToken(ctx context.Context, handle string) error
+func (s *RefreshTokenStore) RemoveRefreshTokensByClient(ctx context.Context, clientId string) (int, error)  // AD-13
+func (s *RefreshTokenStore) RemoveRefreshTokensBySession(ctx context.Context, sessionId string) (int, error)
 func (s *RefreshTokenStore) RemoveExpired(ctx context.Context, cutoff time.Time) (int, error)
 func (s *RefreshTokenStore) ConformsTo() string
 ```
@@ -58,7 +63,9 @@ func (s *RefreshTokenStore) ConformsTo() string
 func (s *ReferenceTokenStore) StoreReferenceToken(ctx context.Context, handle string, token *models.Token) error  // insert-only
 func (s *ReferenceTokenStore) GetReferenceToken(ctx context.Context, handle string) (*models.Token, error)
 func (s *ReferenceTokenStore) RemoveReferenceToken(ctx context.Context, handle string) error
-func (s *ReferenceTokenStore) RemoveReferenceTokens(ctx context.Context, subjectId, clientId string) error  // 批量吊销（payload 扫描）
+func (s *ReferenceTokenStore) RemoveReferenceTokens(ctx context.Context, subjectId, clientId string) error  // 按 subject + client 对吊销（payload 扫描）
+func (s *ReferenceTokenStore) RemoveReferenceTokensByClient(ctx context.Context, clientId string) (int, error)  // AD-13
+func (s *ReferenceTokenStore) RemoveReferenceTokensBySession(ctx context.Context, sessionId string) (int, error)  // session 取 Token.SessionId()（sid claim）
 func (s *ReferenceTokenStore) RemoveExpired(ctx context.Context, cutoff time.Time) (int, error)
 func (s *ReferenceTokenStore) ConformsTo() string
 ```
@@ -70,6 +77,7 @@ func (s *UserConsentStore) StoreUserConsent(ctx context.Context, consent *models
 func (s *UserConsentStore) GetUserConsent(ctx context.Context, subjectId, clientId string) (*models.Consent, error)
 func (s *UserConsentStore) GetAllUserConsents(ctx context.Context, subjectId string) ([]*models.Consent, error)
 func (s *UserConsentStore) RemoveUserConsent(ctx context.Context, subjectId, clientId string) error
+func (s *UserConsentStore) RemoveUserConsentsByClient(ctx context.Context, clientId string) (int, error)  // AD-13
 func (s *UserConsentStore) RemoveExpired(ctx context.Context, cutoff time.Time) (int, error)
 func (s *UserConsentStore) ConformsTo() string
 ```
@@ -94,6 +102,7 @@ func (s *DeviceFlowStore) FindByDeviceCode(ctx context.Context, deviceCode strin
 func (s *DeviceFlowStore) FindByUserCode(ctx context.Context, userCode string) (*models.DeviceCode, error)
 func (s *DeviceFlowStore) UpdateByUserCode(ctx context.Context, userCode string, data *models.DeviceCode) error
 func (s *DeviceFlowStore) RemoveByDeviceCode(ctx context.Context, deviceCode string) error
+func (s *DeviceFlowStore) RemoveDeviceCodesBySession(ctx context.Context, sessionId string) (int, error)  // AD-13；一行承载双码，计数一次
 func (s *DeviceFlowStore) RemoveExpired(ctx context.Context, cutoff time.Time) (int, error)
 func (s *DeviceFlowStore) ConformsTo() string
 ```
@@ -141,6 +150,8 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error    // 按版本顺序应�
 func Down(ctx context.Context, pool *pgxpool.Pool) error  // 逆序回滚已应用迁移，未迁移库为 no-op
 ```
 
+- **`Down` 是全量拆除**：逆序回滚全部已应用迁移，包括 `000001`（DROP 全部表），会删除所有表和数据；不能用来单独撤销 000004，生产库不要调用。回退与手工重做 000004 见 [deployment-guide.md](./deployment-guide.md) 第六节。
+
 - 全部 SQL 经 `go:embed` 内嵌，无需宿主安装 CLI 或迁移工具。
 - 每文件一个事务、单连接执行（保持 search_path）；记账于 `schema_migrations`。
 
@@ -158,6 +169,8 @@ func Down(ctx context.Context, pool *pgxpool.Pool) error  // 逆序回滚已应�
 - 单记录读**不返 `(nil, nil)`**。
 - 列表方法空结果返**空非 nil slice**（`[]*Xxx{}`），不返哨兵错误。
 - 错误判定用 `errors.Is`（哨兵是 `%w` 链上的一环）。
+- **原子取出（AD-12）**：`TakeAuthorizationCode` 用单语句 `DELETE FROM authorization_codes WHERE handle = $1 RETURNING payload` 完成定位、删除与返回，不开显式事务、不先 SELECT 再 DELETE；0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一句柄只有一个成功。DELETE 已提交后 payload 解码失败时返回包装后的解码错误（不是 `ErrNotFound`），码不恢复。
+- **按条件移除（AD-13）**：8 个 `Remove*ByClient` / `*BySession` 方法在参数为空串时直接返回 `(0, nil)`、不发 SQL（`user_consents.client_id` 为 `NOT NULL` 列，空 ClientId 以空串存储，空参数若下发会误删）；否则执行单语句 `DELETE ... WHERE <定位列> = $1`，返回 `RowsAffected`，零匹配返回 `(0, nil)`。定位列由迁移 000004 增加并回填存量行，见 [schema-design-record.md](./schema-design-record.md) 例外 7、8。`PersistedGrantStore` 无新增方法，按 client / session 移除沿用 `RemoveAll` 过滤。
 
 ## 五、合规凭证（宿主装配期校验）
 
@@ -165,11 +178,11 @@ func Down(ctx context.Context, pool *pgxpool.Pool) error  // 逆序回滚已应�
 
 | Store | 值 |
 |---|---|
-| 七个 grant 族 store | `storagetest.SuiteVersion`（`"1.0.0"`） |
-| `SessionStore` | `sessiontest.SuiteVersion` |
-| `KeyRecordStore` | `keymgmttest.SuiteVersion` |
+| 七个 grant 族 store | `storagetest.SuiteVersion`（`"3.0.0"`） |
+| `SessionStore` | `sessiontest.SuiteVersion`（`"3.0.0"`） |
+| `KeyRecordStore` | `keymgmttest.SuiteVersion`（`"3.0.0"`） |
 
-宿主在装配期分别调用比对；套件独立升级时返回值随之变化（已知风险：仅靠版本串相等校验，任一套件独立升级即静默失效——deferred-work 留档）。
+返回值直接取自套件常量，不硬编码；wicket v0.8.0 下三套件同步为 `3.0.0`（wicket 自 v0.3.0 起让三套件版本同步递进）。宿主在装配期分别与对应套件的 `SuiteVersion` 比对。注意：Go 在一次构建中只选定一个 wicket 版本，store 返回的常量与宿主比对用的常量来自同一个包，因此该比对在同一构建内恒成立；返回值的可信度来自本仓的交付纪律——依赖升级、方法补齐与套件全绿原子交付（AD-11 修订），声称的版本即本仓已通过的套件版本。
 
 ## 六、宿主集成最小示例（完整见 README.md）
 

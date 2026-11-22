@@ -8,7 +8,7 @@ wicket-pg 是 [wicket](https://github.com/gonewx/wicket)（OAuth 授权服务器
 
 - **独立项目**：自备 LICENSE（MIT）、PROVENANCE（独立创作声明）、血缘门禁、migrations 与 CI；不是 wicket 的子目录。
 - **独立创作**：实现依赖 wicket 的**公开 API 契约**（端口接口、哨兵错误、契约套件），但不复制、不改编其实现；schema 从端口读写模式独立推导，不照搬上游表结构与实体划分。
-- **平级依赖**：通过 `require github.com/gonewx/wicket v0.1.4` 接入，不用 go.work 搭桥。
+- **平级依赖**：通过 `require github.com/gonewx/wicket v0.8.0` 接入，不用 go.work 搭桥。
 
 ## 当前状态
 
@@ -16,17 +16,17 @@ wicket-pg 是 [wicket](https://github.com/gonewx/wicket)（OAuth 授权服务器
 |---|---|
 | 九个 store 实现 | ✅ 完成（七个 grant 存储族 + 会话 + 密钥记录） |
 | 迁移入口 | ✅ 完成（`migrations.Up` / `Down`，go:embed SQL，幂等） |
-| 契约套件接入 | ✅ 三组套件全部 MUST 级用例绿（storagetest / sessiontest / keymgmttest） |
+| 契约套件接入 | ✅ 三组 3.0.0 套件全部 MUST 级用例绿（storagetest / sessiontest / keymgmttest），九个 `ConformsTo()` 均为 `3.0.0` |
 | 血缘门禁 | ✅ 三项全绿，判别力经探针自证 |
-| CI | ✅ 三 job（lineage-gates → build、conformance）合并阻塞 |
-| 发布 | ✅ `v0.1.0`、`v0.1.1`、`v0.1.2`、`v0.1.3` tag 已打（**推荐 v0.1.3**，首个不携带 rc directive 的版本；v0.1.0 因分发层分裂不推荐引用） |
+| CI | ✅ 三 job（lineage-gates → build、conformance）合并阻塞；`conformance` 同时跑契约套件与 e2e |
+| 发布 | `v0.1.0`、`v0.1.1`、`v0.1.2`、`v0.1.3` tag 已打（v0.1.x 线，与 wicket v0.1.x 组合时用 v0.1.3；v0.1.0 因分发层分裂不推荐引用）；文档按 **v0.2.0**（wicket v0.8.0 适配版）描述安装与升级 |
 
 ## 技术栈
 
 | 类别 | 技术 | 版本 | 说明 |
 |---|---|---|---|
 | 语言 | Go | `1.27`（CI pin `1.27.0`） | directive 是对下游的语言版本承诺（不带补丁号），CI pin 是本仓构建环境（取精确补丁版）；rc 已于 Go 1.27.0 发布后去除，v0.1.3 起 tag 不携带 rc directive |
-| 核心依赖 | wicket | v0.1.4 | 端口接口、哨兵错误、契约套件入口，只读依赖 |
+| 核心依赖 | wicket | v0.8.0 | 端口接口、哨兵错误、契约套件入口（`SuiteVersion` 3.0.0），只读依赖 |
 | 数据库驱动 | pgx/v5 | v5.10.0 | 原生 `pgxpool.Pool` 接口，不经 `database/sql` |
 | 测试依赖 | yaml.v3 | v3.0.1 | 仅 `tests/e2e/ci_job_e2e_test.go`（CI 配置静态断言） |
 | 数据库 | PostgreSQL | 15+ | CI 用 `postgres:15` service 容器 |

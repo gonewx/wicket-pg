@@ -19,7 +19,7 @@ wicket-pg/
 │   ├── backchannel_authentication_request.go  # BackchannelAuthenticationRequestStore（CIBA）
 │   ├── session.go               #   SessionStore（会话，text[] 原子追加）
 │   ├── key_records.go           #   KeyRecordStore（密钥记录，部分唯一索引）
-│   └── *_test.go                #   单测（基座/编解码/错误映射/ConformsTo）
+│   └── *_test.go                #   单测（基座/编解码/错误映射/ConformsTo/按条件移除 scoped_removal_test.go）
 ├── migrations/                  # ★ 迁移入口
 │   ├── migrations.go            #   Up / Down（go:embed *.sql，幂等记账）
 │   ├── 000001_init.up.sql       #   初始 schema：9 业务表 + 记账表 + 13 索引
@@ -28,6 +28,8 @@ wicket-pg/
 │   ├── 000002_device_flow_user_code.down.sql
 │   ├── 000003_session_subject_id.up.sql      # 会话 subject_id 列 + 索引
 │   ├── 000003_session_subject_id.down.sql
+│   ├── 000004_scoped_removal_columns.up.sql  # 按条件移除定位列（7 列）+ 8 索引 + 存量回填
+│   ├── 000004_scoped_removal_columns.down.sql
 │   └── *_audit_test.go          #   时钟审计 / schema 记录三方一致审计
 ├── tests/
 │   ├── lineage/                 # ★ 血缘门禁（CI 第一个 job）
@@ -39,11 +41,12 @@ wicket-pg/
 │   │   ├── session_fixture_test.go # session 套件入口
 │   │   ├── keymgmt_fixture_test.go # keymgmt 套件入口
 │   │   └── *_test.go            #   套件外的补充断言（独立拷贝语义等）
-│   └── e2e/                     #   真实 PostgreSQL e2e（17 个文件，76 用例）
+│   └── e2e/                     #   真实 PostgreSQL e2e（19 个文件，87 个测试函数）
 │       ├── migrations_e2e_test.go        # 迁移生命周期/幂等/回滚/search_path
 │       ├── schema_record_e2e_test.go     # schema 契约列级断言
 │       ├── ci_job_e2e_test.go            # CI 配置静态契约（yaml 解析）
 │       ├── readme_quickstart_e2e_test.go # README 快速开始示例可编译性
+│       ├── scoped_removal_*_e2e_test.go  # 000004 定位列写值/回填与按条件移除效果
 │       └── {store}_e2e_test.go           # 各 store 语义 e2e
 ├── internal/lineage/            # 预留（空）
 ├── docs/                        # 本知识库（index 见 index.md）
@@ -72,14 +75,14 @@ wicket-pg/
 - **门禁自证**：`discrimination_test.go` 故意构造违规（缺版权头、带上游标注）验证门禁判别力，本身也是门禁的一部分。
 - **迁移与 store 三方一致**：`migrations/schema_record_audit_test.go` 审计「设计记录 ↔ 迁移 SQL ↔ store 源码」一致；`clock_audit_test.go` 审计 SQL 无时钟函数。
 
-## 四、测试总量与分布（123 个测试函数）
+## 四、测试总量与分布（139 个测试函数，按 `^func Test` 计）
 
 | 包 | 数量 |
 |---|---|
-| `store/` 单测 | 16 |
+| `store/` 单测 | 20 |
 | `migrations/` 审计 | 5 |
-| `tests/conformance/` | 19（含 9 个套件入口 + 补充断言） |
-| `tests/e2e/` | 76 |
+| `tests/conformance/` | 21（含 9 个套件入口 + 补充断言） |
+| `tests/e2e/` | 87 |
 | `tests/lineage/` | 6（3 门禁 + 3 探针） |
 
 ## 五、构建与测试命令

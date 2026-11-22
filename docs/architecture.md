@@ -6,11 +6,11 @@
 
 ```mermaid
 flowchart LR
-    subgraph wicket["wicket（端口定义方，只读依赖 v0.1.4）"]
+    subgraph wicket["wicket（端口定义方，只读依赖 v0.8.0）"]
         P1["storage 端口族<br/>AuthorizationCodeStore 等七口"]
         P2["session.Store"]
         P3["keymgmt.RecordStore"]
-        S["契约套件<br/>storagetest / sessiontest / keymgmttest"]
+        S["契约套件 3.0.0<br/>storagetest / sessiontest / keymgmttest"]
         E["哨兵错误<br/>ErrNotFound 等"]
     end
 
@@ -49,7 +49,7 @@ flowchart LR
 |---|---|---|
 | 驱动 | `pgx/v5` 原生接口（`pgxpool.Pool`） | 不经 `database/sql` 抽象层（spec 决策） |
 | 序列化 | 版本容器单列 `payload jsonb`（`{"version":1,"dataProtected":false,"payload":"<base64>"}`） | model 演进时 schema 不必跟着动；`store/codec.go` |
-| 真实列 | 只落查询路径与守卫所需最小集 | 句柄主键、subject/client/type 过滤列、生命周期列、版本守卫列、keymgmt 唯一性列；其余进 payload |
+| 真实列 | 只落查询路径与守卫所需最小集 | 句柄主键、subject/client/type 过滤列、按条件移除的 `client_id` / `session_id` 定位列（000004）、生命周期列、版本守卫列、keymgmt 唯一性列；其余进 payload |
 | 迁移 | go:embed SQL + 自研幂等记账 `schema_migrations` | 不引入外部迁移库、不依赖宿主装 CLI；文件名沿 golang-migrate 惯例便于未来换工具 |
 | 过期判定 | **禁止** SQL 内 `expires_at > now()` | 适配器用数据库时钟、核心用注入 Clock，集群时钟漂移下结论分裂；清理入口只回收空间 |
 | 清理形态 | 显式入口 `RemoveExpired(ctx, cutoff time.Time) (int, error)` | 调用方驱动的一次性回收、返回计数；不起后台 goroutine |
@@ -98,7 +98,7 @@ func NewXxxStore(pool *pgxpool.Pool, logger *slog.Logger) *XxxStore
 
 ## 四、数据架构
 
-10 张表（`schema_migrations` + 9 张业务表）、15 个显式索引。**每张表、每个索引都能指名对应的端口方法**——这是硬性维护约定（AC-2），完整对应表见 [schema-design-record.md](./schema-design-record.md)，总览见 [data-models.md](./data-models.md)。
+10 张表（`schema_migrations` + 9 张业务表）、23 个显式索引。**每张表、每个索引都能指名对应的端口方法**——这是硬性维护约定（AC-2），完整对应表见 [schema-design-record.md](./schema-design-record.md)，总览见 [data-models.md](./data-models.md)。
 
 ```mermaid
 erDiagram
@@ -116,6 +116,9 @@ erDiagram
 要点：
 - **单点取用**：`handle` / `session_id` / `key` 单列主键。
 - **批量吊销**：`persisted_grants` 落 `subject_id`/`session_id`/`client_id`/`type` 四过滤真实列；`sessions.subject_id`（迁移 000003）、`device_codes.user_code`（迁移 000002）为后补维度列。
+- **按条件移除定位列（迁移 000004）**：`authorization_codes` / `refresh_tokens` / `reference_tokens` 落 `client_id` + `session_id`，`device_codes` 落 `session_id`，`user_consents.client_id` 单建索引；写入时取自模型（引用令牌取 `sid` claim，与 `Token.SessionId()` 同口径），`UpdateRefreshToken` / `UpdateByUserCode` 同语句刷新；7 个新增定位列空值存 NULL（`user_consents.client_id` 是 000001 既有的 `NOT NULL` 列，空 ClientId 存空串，不适用此规则）；存量行由 000004 同事务回填。
+- **原子取出（AD-12）**：`TakeAuthorizationCode` 单语句 `DELETE ... WHERE handle = $1 RETURNING payload`，0 行返 `ErrNotFound`，不开显式事务、不先 SELECT 再 DELETE。
+- **按条件移除（AD-13）**：空参数直接返回 `(0, nil)`、不发 SQL；否则单语句 `DELETE ... WHERE <定位列> = $1`，返回 `RowsAffected`。
 - **清理**：`expires_at` 列（session 特例叫 `expires`）+ 对应索引；NULL 表示永不过期。
 - **版本守卫**：仅 `refresh_tokens` 与 `key_records` 有 `version bigint` 列（AD-3）。
 - **唯一性**：`key_records` 部分唯一索引（`phase <> 'retired'`）；`device_codes.user_code` 唯一索引双职责（读路径 + 重复拒绝）。
@@ -139,7 +142,7 @@ flowchart LR
 
 - **血缘门禁**：原创作权（文件头）、零上游血缘标注、中性提交信息——先跑并 gate 住一切构建。
 - **契约套件**：九个入口分别调用 wicket 三套件；工厂每次调用创建全新空 store（隔离 schema + 专属 pool），并行子测试互不污染；MUST 全绿，MAY 级逐条留档。
-- **合规凭证**：每个 store 暴露 `ConformsTo() string`，返回所属套件的 `SuiteVersion`（grant 族与 session/keymgmt 各自独立）。
+- **合规凭证**：每个 store 暴露 `ConformsTo() string`，返回所属套件的 `SuiteVersion` 常量（grant 族 → `storagetest`，session → `sessiontest`，keymgmt → `keymgmttest`）；wicket v0.8.0 下九个均为 `3.0.0`。
 
 ## 七、关键不变量（改动红线）
 
@@ -150,8 +153,11 @@ flowchart LR
 5. SQL 永不出现时钟函数；`RemoveExpired` 统一形态 `DELETE ... WHERE <列> IS NOT NULL AND <列> < $cutoff`。
 6. 文件首行 `// Copyright 2026 Decker.`；任何文件不得出现血缘标注（门禁转红）。
 7. 九个 store 均暴露单值签名 `ConformsTo() string`。
+8. 写入（Store）与 `UpdateRefreshToken` / `UpdateByUserCode` 在同一语句内写入 / 刷新定位列，不得漂移；空值存 NULL（`user_consents.client_id` 除外，该列 `NOT NULL`）。
+9. `Remove*ByClient` / `*BySession` 空参数在 Go 侧短路返回 `(0, nil)`、不发 SQL。
+10. `TakeAuthorizationCode` 为单语句 `DELETE ... RETURNING`，禁止先 SELECT 再 DELETE、不开显式事务。
 
 ## 八、依赖与演进
 
-- 依赖树全部是已发布版本（wicket v0.1.4、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
+- 依赖树全部是已发布版本（wicket v0.8.0、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
 - 已识别风险（deferred-work 留档）：并发 `Up` 无 advisory lock（多实例并发启动 PK 冲突）；`schema_migrations` 表名与 golang-migrate 默认表同名冲突。`go 1.27rc1` directive 对 dependabot/gopls 的生态摩擦已消除（Go 1.27.0 发布后两处去 rc，2026-08-21）。
