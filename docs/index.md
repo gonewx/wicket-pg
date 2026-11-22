@@ -18,7 +18,7 @@
 | 推荐版本 | `v0.2.1`（已发布；更正 v0.2.0 升级说明，要求 wicket v0.8.0；升级须先停旧写入方再 `Up` 应用 000004，v0.1.x 签发的刷新令牌回填前不得对其调用 `RemoveExpired`，见部署指南第六节）；与 wicket v0.1.x 组合时用 `v0.1.3`（v0.1.x 线最新发布；v0.1.0 因分发层分裂不推荐引用） |
 | 关键依赖 | `github.com/gonewx/wicket v0.8.0`（三套件 `SuiteVersion` 3.0.0，十一个 `ConformsTo()` 均返回 3.0.0）、`github.com/jackc/pgx/v5 v5.10.0`、`gopkg.in/yaml.v3 v3.0.1`（仅测试） |
 | 入口点 | `store.NewXxxStore(pool, logger)` × 11、`migrations.Up/Down(ctx, pool)` |
-| 测试总量 | 157 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |
+| 测试总量 | 159 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |
 | 门禁 | 三项血缘门禁（原创作权 / 零血缘标注 / 中性提交信息） |
 
 ## 生成的文档

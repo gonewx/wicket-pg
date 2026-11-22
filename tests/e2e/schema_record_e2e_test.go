@@ -366,7 +366,7 @@ var readPaths = []readPath{
 	{"SELECT subject_id FROM user_consents WHERE client_id = 'c-1'", "idx_user_consents_client_id"},
 	{"SELECT handle FROM authorization_codes WHERE handle = 'h-1'", "authorization_codes_pkey"},
 	{"SELECT session_id FROM sessions WHERE session_id = 's-1'", "sessions_pkey"},
-	{"SELECT client_id FROM client_registrations WHERE allowed_cors_origins @> ARRAY['https://a.example']::text[]", "idx_client_registrations_allowed_cors_origins"},
+	{"SELECT client_id FROM client_registrations WHERE allowed_cors_origins @> ARRAY['https://a.example']::text[] AND NOT removed", "idx_client_registrations_allowed_cors_origins"},
 }
 
 // TestE2ESchemaRecordReadPathsHitTheirIndexes verifies the record's

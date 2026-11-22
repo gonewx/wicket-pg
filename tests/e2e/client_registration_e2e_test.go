@@ -6,7 +6,9 @@
 // directly: the visible columns written at registration, their refresh on
 // update, the tombstone shape a removal leaves, nil allowed origins stored
 // as an empty array, sub-microsecond registration times surviving the round
-// trip through payload, and reads of an undecodable row. The suite is gated
+// trip through payload, reads of an undecodable row, the two CHECK
+// constraints that fix the tombstone shape, and the origin lookup's own
+// NOT removed filter. The suite is gated
 // behind WICKET_PG_TEST_DATABASE_URL so the plain test run stays green
 // without a database.
 package e2e_test
@@ -15,6 +17,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +26,7 @@ import (
 	"github.com/gonewx/wicket-pg/store"
 	"github.com/gonewx/wicket/storage"
 	"github.com/gonewx/wicket/storage/models"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -261,15 +265,103 @@ func TestE2EClientRegistrationUndecodablePayload(t *testing.T) {
 	if registration != nil {
 		t.Errorf("FindClientRegistration record = %+v, want nil", registration)
 	}
+	assertDCRDecodeError(t, "FindClientRegistration", err)
 	client, err := s.FindClientById(t.Context(), "client-bad")
 	if err == nil || errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("FindClientById = %+v, %v; want a decode error, not storage.ErrNotFound", client, err)
+	}
+	assertDCRDecodeError(t, "FindClientById", err)
+	if client != nil {
+		t.Errorf("FindClientById client = %+v, want nil", client)
 	}
 	clients, err := s.FindClientsByAllowedOrigin(t.Context(), "https://bad.example")
 	if err == nil || errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("FindClientsByAllowedOrigin = %v, %v; want a decode error", clients, err)
 	}
+	assertDCRDecodeError(t, "FindClientsByAllowedOrigin", err)
 	if clients != nil {
 		t.Errorf("FindClientsByAllowedOrigin result = %v, want nil on error", clients)
+	}
+}
+
+// assertDCRDecodeError fails unless err is the store's wrapped payload
+// decode error, so a transport or other failure cannot pass for one.
+func assertDCRDecodeError(t *testing.T, op string, err error) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "decode client registration payload") {
+		t.Errorf("%s error = %v, want the wrapped payload decode error", op, err)
+	}
+}
+
+// TestE2EClientRegistrationTombstoneChecksEnforced pins the two CHECK
+// constraints of 000006 that fix the tombstone shape at the schema level:
+// a live row without payload and a tombstone that keeps its digest are
+// both rejected with check_violation (23514) naming the constraint, while a
+// well-formed tombstone is accepted.
+func TestE2EClientRegistrationTombstoneChecksEnforced(t *testing.T) {
+	_, pool := newDCRStore(t)
+	digest := "digest-x"
+	payload := `{"version":1,"dataProtected":false,"payload":""}`
+	cases := []struct {
+		name       string
+		removed    bool
+		digest     *string
+		payload    *string
+		constraint string
+	}{
+		{"live row without payload", false, &digest, nil, "client_registrations_payload_tombstone"},
+		{"tombstone keeping its digest", true, &digest, nil, "client_registrations_digest_tombstone"},
+		{"live row without digest", false, nil, &payload, "client_registrations_digest_tombstone"},
+		{"tombstone keeping its payload", true, nil, &payload, "client_registrations_payload_tombstone"},
+	}
+	for _, c := range cases {
+		_, err := pool.Exec(t.Context(),
+			`INSERT INTO client_registrations
+				(client_id, revision, removed, registration_access_token_digest, registration_time, allowed_cors_origins, payload)
+				VALUES ('client-x', 1, $1, $2, $3, '{}', $4::jsonb)`,
+			c.removed, c.digest, fixedNow, c.payload)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != c.constraint {
+			t.Errorf("%s: insert error = %v, want check_violation 23514 on %s", c.name, err, c.constraint)
+		}
+	}
+
+	if _, err := pool.Exec(t.Context(),
+		`INSERT INTO client_registrations
+			(client_id, revision, removed, registration_access_token_digest, registration_time, allowed_cors_origins, payload)
+			VALUES ('client-tomb', 3, true, NULL, $1, '{}', NULL)`,
+		fixedNow); err != nil {
+		t.Errorf("insert well-formed tombstone: %v", err)
+	}
+}
+
+// TestE2EClientRegistrationOriginLookupSkipsRemoved pins the origin
+// lookup's own NOT removed filter. A store removal empties the origins, so
+// the conformance suite cannot tell the filter apart from that; the CHECK
+// constraints do not cover origins, so a tombstone that still lists an
+// origin can be written directly, and the lookup must not return it.
+func TestE2EClientRegistrationOriginLookupSkipsRemoved(t *testing.T) {
+	s, pool := newDCRStore(t)
+	if _, err := s.RegisterClient(t.Context(), dcrRegistration(t, "client-live", "digest-live", "https://shared.example")); err != nil {
+		t.Fatalf("RegisterClient: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(),
+		`INSERT INTO client_registrations
+			(client_id, revision, removed, registration_access_token_digest, registration_time, allowed_cors_origins, payload)
+			VALUES ('client-tomb', 2, true, NULL, $1, ARRAY['https://shared.example'], NULL)`,
+		fixedNow); err != nil {
+		t.Fatalf("insert tombstone with origins: %v", err)
+	}
+
+	clients, err := s.FindClientsByAllowedOrigin(t.Context(), "https://shared.example")
+	if err != nil {
+		t.Fatalf("FindClientsByAllowedOrigin: %v", err)
+	}
+	if len(clients) != 1 || clients[0].ClientId != "client-live" {
+		ids := make([]string, 0, len(clients))
+		for _, c := range clients {
+			ids = append(ids, c.ClientId)
+		}
+		t.Errorf("FindClientsByAllowedOrigin ids = %v, want [client-live]", ids)
 	}
 }
