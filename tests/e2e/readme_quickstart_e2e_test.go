@@ -28,12 +28,13 @@ import (
 
 const readmePath = "README.md"
 
-// wantReleaseVersion is the release this README documents: v0.2.1, which
-// corrects the v0.2.0 upgrade notes on refresh tokens. v0.2.0 was the first
-// release that requires wicket v0.8.0 (suite version 3.0.0) and ships
-// migration 000004. Hosts still on wicket v0.1.x keep v0.1.3, which the
-// upgrade section names separately.
-const wantReleaseVersion = "v0.2.1"
+// wantReleaseVersion is the release this README documents: v0.3.0, which
+// adds the pushed authorization request and client registration stores
+// (migrations 000005 and 000006) and still requires wicket v0.8.0 (suite
+// version 3.0.0). v0.2.0 was the first release for wicket v0.8.0 and v0.2.1
+// corrected its upgrade notes on refresh tokens. Hosts still on wicket
+// v0.1.x keep v0.1.3, which the upgrade section names separately.
+const wantReleaseVersion = "v0.3.0"
 
 // TestE2EReadmeInstallCommandPinsRealModule verifies AC-1: the install
 // command uses the GOWORK=off form (the external workspace would otherwise
@@ -101,6 +102,38 @@ func TestE2EReadmeUpgradeSectionNamesMigrationAndFallback(t *testing.T) {
 	} {
 		if !strings.Contains(readme, claim) {
 			t.Errorf("README upgrade guidance must carry %q", claim)
+		}
+	}
+}
+
+// TestE2EReadmeCarriesClientSeedingGuidance pins the guidance a host needs
+// before enabling dynamic client registration: the registration store then
+// becomes the only client source (wicket panics at Freeze when it is
+// combined with SetClientStore, SetClients or SetClientsProvider), so every
+// existing client must be seeded with RegisterClient first. The README must
+// say how: secrets hashed by the caller, the empty digest that makes the
+// management endpoints refuse the client or a digest computed by wicket's
+// helper, a non-zero registration time, ErrDuplicateHandle on a rerun, and
+// tombstoned ids that cannot be seeded again.
+func TestE2EReadmeCarriesClientSeedingGuidance(t *testing.T) {
+	readme := readFile(t, filepath.Join(repoRoot(t), readmePath))
+
+	for _, claim := range []string{
+		"Seed existing clients before enabling dynamic client registration",
+		"the client registration store is the only client source",
+		"one `RegisterClient` call per client",
+		"must already hold the hashed secret",
+		"leave it empty (`\"\"`)",
+		"`clientregistration.RegistrationAccessTokenDigest(token)`",
+		"not the zero value",
+		"`client_id_issued_at`",
+		"returns `storage.ErrDuplicateHandle` for each client already present",
+		"`FindClientRegistration`",
+		"`UpdateClientRegistration`",
+		"cannot be seeded again",
+	} {
+		if !strings.Contains(readme, claim) {
+			t.Errorf("README client seeding guidance must carry %q", claim)
 		}
 	}
 }

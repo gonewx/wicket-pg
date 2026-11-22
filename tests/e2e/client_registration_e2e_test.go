@@ -7,8 +7,9 @@
 // update, the tombstone shape a removal leaves, nil allowed origins stored
 // as an empty array, sub-microsecond registration times surviving the round
 // trip through payload, reads of an undecodable row, the two CHECK
-// constraints that fix the tombstone shape, and the origin lookup's own
-// NOT removed filter. The suite is gated
+// constraints that fix the tombstone shape, the origin lookup's own
+// NOT removed filter, and the seeding of existing clients with an empty
+// registration access token digest. The suite is gated
 // behind WICKET_PG_TEST_DATABASE_URL so the plain test run stays green
 // without a database.
 package e2e_test
@@ -363,5 +364,105 @@ func TestE2EClientRegistrationOriginLookupSkipsRemoved(t *testing.T) {
 			ids = append(ids, c.ClientId)
 		}
 		t.Errorf("FindClientsByAllowedOrigin ids = %v, want [client-live]", ids)
+	}
+}
+
+// TestE2EClientRegistrationSeedWithEmptyDigest pins the seeding path a host
+// follows before switching to the registration store: an existing client
+// registered with an empty registration access token digest and a non-zero
+// registration time is served by FindClientById and the origin lookup, its
+// registration reads back with an empty digest, and the column holds an
+// empty string, not NULL, which the digest CHECK constraint reserves for
+// tombstones.
+// wicket's management endpoints refuse every request for a client whose
+// digest is empty.
+func TestE2EClientRegistrationSeedWithEmptyDigest(t *testing.T) {
+	s, pool := newDCRStore(t)
+	seed := dcrRegistration(t, "first-party", "", "https://app.example")
+	revision, err := s.RegisterClient(t.Context(), seed)
+	if err != nil {
+		t.Fatalf("RegisterClient with empty digest: %v", err)
+	}
+	if revision != 1 {
+		t.Errorf("RegisterClient revision = %d, want 1", revision)
+	}
+
+	client, err := s.FindClientById(t.Context(), "first-party")
+	if err != nil {
+		t.Fatalf("FindClientById: %v", err)
+	}
+	if !reflect.DeepEqual(client, seed.Client) {
+		t.Errorf("FindClientById = %+v, want %+v", client, seed.Client)
+	}
+	clients, err := s.FindClientsByAllowedOrigin(t.Context(), "https://app.example")
+	if err != nil {
+		t.Fatalf("FindClientsByAllowedOrigin: %v", err)
+	}
+	if len(clients) != 1 || clients[0].ClientId != "first-party" {
+		t.Errorf("FindClientsByAllowedOrigin = %v, want the seeded client only", clients)
+	}
+	registration, err := s.FindClientRegistration(t.Context(), "first-party")
+	if err != nil {
+		t.Fatalf("FindClientRegistration: %v", err)
+	}
+	if registration.RegistrationAccessTokenDigest != "" {
+		t.Errorf("RegistrationAccessTokenDigest = %q, want empty", registration.RegistrationAccessTokenDigest)
+	}
+	if !registration.RegistrationTime.Equal(fixedNow) {
+		t.Errorf("RegistrationTime = %v, want %v", registration.RegistrationTime, fixedNow)
+	}
+
+	row := readDCRRow(t, pool, "first-party")
+	if row.digest == nil {
+		t.Error("registration_access_token_digest is NULL for a seeded client, want ''")
+	} else if *row.digest != "" {
+		t.Errorf("registration_access_token_digest = %q, want ''", *row.digest)
+	}
+	if row.removed || row.payloadIsNull {
+		t.Errorf("seeded row removed = %v, payload NULL = %v; want a live row", row.removed, row.payloadIsNull)
+	}
+}
+
+// TestE2EClientRegistrationReseedIsDuplicate pins what a host sees when it
+// runs its seeding again: registering a client id that is already seeded,
+// with different content, fails with storage.ErrDuplicateHandle and leaves
+// the stored row and payload unchanged, so a rerun can treat the error as
+// "already seeded". A removed client id cannot be seeded again either.
+func TestE2EClientRegistrationReseedIsDuplicate(t *testing.T) {
+	s, pool := newDCRStore(t)
+	if _, err := s.RegisterClient(t.Context(), dcrRegistration(t, "first-party", "", "https://app.example")); err != nil {
+		t.Fatalf("RegisterClient: %v", err)
+	}
+	snapshot := func() (dcrRow, string) {
+		t.Helper()
+		var payload string
+		if err := pool.QueryRow(t.Context(),
+			"SELECT payload::text FROM client_registrations WHERE client_id = $1", "first-party").Scan(&payload); err != nil {
+			t.Fatalf("read payload: %v", err)
+		}
+		return readDCRRow(t, pool, "first-party"), payload
+	}
+	beforeRow, beforePayload := snapshot()
+
+	changed := dcrRegistration(t, "first-party", "digest-other", "https://other.example")
+	changed.Client.ClientName = "Renamed"
+	changed.RegistrationTime = fixedNow.Add(time.Hour)
+	if _, err := s.RegisterClient(t.Context(), changed); !errors.Is(err, storage.ErrDuplicateHandle) {
+		t.Fatalf("second RegisterClient error = %v, want storage.ErrDuplicateHandle", err)
+	}
+
+	afterRow, afterPayload := snapshot()
+	if !reflect.DeepEqual(afterRow, beforeRow) {
+		t.Errorf("row after duplicate seed = %+v, want unchanged %+v", afterRow, beforeRow)
+	}
+	if afterPayload != beforePayload {
+		t.Errorf("payload changed by a duplicate seed:\nbefore %s\nafter  %s", beforePayload, afterPayload)
+	}
+
+	if err := s.RemoveClientRegistration(t.Context(), "first-party", 1); err != nil {
+		t.Fatalf("RemoveClientRegistration: %v", err)
+	}
+	if _, err := s.RegisterClient(t.Context(), dcrRegistration(t, "first-party", "", "https://app.example")); !errors.Is(err, storage.ErrDuplicateHandle) {
+		t.Errorf("seeding a removed client id: error = %v, want storage.ErrDuplicateHandle", err)
 	}
 }

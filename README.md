@@ -4,7 +4,7 @@ PostgreSQL storage adapter for [wicket](https://github.com/gonewx/wicket).
 
 ## Status
 
-The adapter implementation is complete: all eleven store types, the migrations entry point (six migrations, `000001` through `000006`), and the wicket 3.0.0 conformance contract suites are in place and passing; every store's `ConformsTo()` returns `3.0.0`. The pushed authorization request store (`PushedAuthorizationRequestStore`, for wicket's optional PAR feature) with its migration `000005`, and the client registration store (`ClientRegistrationStore`, for wicket's dynamic client registration and the features that depend on it) with its migration `000006`, are on `main` and not yet in a release; see the Unreleased section of the changelog. v0.2.1 is released and targets wicket v0.8.0: for new installs, use v0.2.1. It corrects the v0.2.0 upgrade notes (refresh tokens issued by wicket v0.1.x must be backfilled before `RemoveExpired`) and changes no code or schema; v0.2.0 is the first release for wicket v0.8.0. See [CHANGELOG.md](CHANGELOG.md) for the upgrade notes. v0.1.0 through v0.1.3 are the existing wicket v0.1.x releases (v0.1.0 is unusable through the default Go module proxy due to a distribution split).
+The adapter implementation is complete: all eleven store types, the migrations entry point (six migrations, `000001` through `000006`), and the wicket 3.0.0 conformance contract suites are in place and passing; every store's `ConformsTo()` returns `3.0.0`. v0.3.0 targets wicket v0.8.0: for new installs, use v0.3.0. It adds the pushed authorization request store (`PushedAuthorizationRequestStore`, for wicket's optional PAR feature) with its migration `000005`, and the client registration store (`ClientRegistrationStore`, for wicket's dynamic client registration and the features that depend on it) with its migration `000006`. v0.2.1 corrects the v0.2.0 upgrade notes (refresh tokens issued by wicket v0.1.x must be backfilled before `RemoveExpired`) and changes no code or schema; v0.2.0 is the first release for wicket v0.8.0. See [CHANGELOG.md](CHANGELOG.md) for the upgrade notes. v0.1.0 through v0.1.3 are the existing wicket v0.1.x releases (v0.1.0 is unusable through the default Go module proxy due to a distribution split).
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ The adapter implementation is complete: all eleven store types, the migrations e
 ### Install
 
 ```bash
-GOWORK=off go get github.com/gonewx/wicket-pg@v0.2.1
+GOWORK=off go get github.com/gonewx/wicket-pg@v0.3.0
 ```
 
 ### Apply migrations
@@ -72,17 +72,33 @@ _ = store.NewSessionStore(pool, logger)
 _ = store.NewKeyRecordStore(pool, logger)
 ```
 
+### Seed existing clients before enabling dynamic client registration
+
+Once `SetClientRegistrationStore` is used, the client registration store is the only client source: wicket panics at `Freeze()` if `SetClientStore`, `SetClients` or `SetClientsProvider` is also used, and it has no option for static clients. Before switching, write every existing first-party or static client into `client_registrations` with one `RegisterClient` call per client. Do it in this order: freeze changes to the old client source, seed, then switch the configuration; during a rolling deployment, old and new instances read clients from different sources.
+
+- Pass the `Client` as it is. The client is stored with `storage.EncodeClient`, which does not hash anything: each `Secret.Value` must already hold the hashed secret, never the plaintext, in the same hashed form as in `SetClients` (wicket's `utils.Sha256`, the form wicket's registration endpoint stores).
+- `RegistrationAccessTokenDigest`: leave it empty (`""`), and wicket's client management endpoints (RFC 7592) refuse every request for that client; this is the recommended choice for first-party clients. Alternatively, generate a registration access token yourself, store `clientregistration.RegistrationAccessTokenDigest(token)` as the digest and keep the token on your side.
+- `RegistrationTime`: use the client's original creation time or the time of seeding, not the zero value: the management responses report it as `client_id_issued_at`.
+- Running the seeding again returns `storage.ErrDuplicateHandle` for each client already present; treat it as already seeded. It only means the id exists: a rerun does not update a client that has since changed in the source. To change a seeded client later, read it with `FindClientRegistration` and write it with `UpdateClientRegistration` and the revision you read.
+- Stop on any error other than `storage.ErrDuplicateHandle`, and do not switch until every client has been seeded or already exists.
+- Switching back to `SetClients` or `SetClientStore` later does not carry over clients registered or changed through dynamic client registration.
+- A removed client id leaves a tombstone and cannot be seeded again.
+
+## Upgrading from v0.2.x
+
+Upgrade the module to v0.3.0 with `go get` (it still requires wicket v0.8.0), then call `migrations.Up(ctx, pool)`. v0.3.0 adds migrations `000005` and `000006`, which each create one new table (`pushed_authorization_requests` and `client_registrations`); they touch no existing table and need no backfill. A host that enables PAR must call `PushedAuthorizationRequestStore.RemoveExpired` periodically; wicket does not reclaim these records for it. A host that enables dynamic client registration must seed its existing clients first (see above).
+
 ## Upgrading from v0.1.x
 
 Moving the host from wicket v0.1.x to v0.8.0 brings its own changes; read wicket's [CHANGELOG](https://github.com/gonewx/wicket/blob/v0.8.0/CHANGELOG.md) before upgrading. v0.2.x adds migration `000004`, which gives the authorization code, refresh token and reference token tables visible `client_id` / `session_id` columns and the device code table a visible `session_id` column, indexes them (plus `user_consents.client_id`), and backfills existing rows from their payload. The removal-by-client and removal-by-session methods rely on these columns.
 
 1. Stop every writer still running a v0.1.x build. A v0.1.x build writing after `000004` leaves the new columns `NULL` on insert and stale on update; the backfill runs only once, inside the migration, so those rows would be silently missed by later removals by client or session.
 2. Run the NUL pre-check from `docs/deployment-guide.md` section 6.2 on the authorization code, refresh token, reference token and device code tables, and clear any hits: a payload holding `\u0000` makes `000004` fail and roll back.
-3. Upgrade the module to v0.2.1 (which requires wicket v0.8.0), then call `migrations.Up(ctx, pool)` to apply migration 000004 before any v0.2.1 store serves traffic. On large tables, run it in a maintenance window: it rewrites four tables in one transaction. Expired authorization codes, reference tokens and device codes may be reclaimed with their store's `RemoveExpired` first; refresh tokens may not.
-4. Before starting the v0.2.1 writers, disable every automatic call your host makes to `RefreshTokenStore.RemoveExpired` (startup sequence, cron job, timer); re-enable it only after the backfill's confirmation query in section 6.4 returns no rows. Then start the v0.2.1 writers.
+3. Upgrade the module to v0.3.0 (which requires wicket v0.8.0), then call `migrations.Up(ctx, pool)` to apply migration 000004 before any v0.3.0 store serves traffic. The same `Up` also applies `000005` and `000006`, which each create one new table and need no backfill. On large tables, run it in a maintenance window: it rewrites four tables in one transaction. Expired authorization codes, reference tokens and device codes may be reclaimed with their store's `RemoveExpired` first; refresh tokens may not.
+4. Before starting the v0.3.0 writers, disable every automatic call your host makes to `RefreshTokenStore.RemoveExpired` (startup sequence, cron job, timer); re-enable it only after the backfill's confirmation query in section 6.4 returns no rows. Then start the v0.3.0 writers.
 5. Backfill refresh tokens issued by wicket v0.1.x before reclaiming any. Do not call `RemoveExpired` on refresh tokens before the backfill: wicket v0.1.x never sets their `CreationTime` or `Lifetime`, so their derived expiry is in year 1 and `RemoveExpired` deletes every one of them, valid or not. The recipe (select with `expires_at < '0002-01-01'`, then `GetRefreshToken`, set `CreationTime` / `Lifetime`, `UpdateRefreshToken` with the version read) is in `docs/deployment-guide.md` section 6.4. These tokens also carry no session, so `RemoveRefreshTokensBySession` does not remove them. If you already called `RemoveExpired` on refresh tokens, the deleted tokens can only be restored from a backup, or their holders must authorize again.
 
-If your host must keep wicket v0.1.x, stay on v0.1.3: v0.2.x requires wicket v0.8.0, and adding it raises your host's wicket requirement to that version. On wicket v0.1.x, do not call `RefreshTokenStore.RemoveExpired`: those refresh tokens have no expiry, so it deletes all of them. Do not use `migrations.Down` to back out `000004` — it reverts every migration and deletes all data. See `docs/deployment-guide.md` for the pre-upgrade check, the refresh token backfill, the rollback procedure and the operational notes.
+If your host must keep wicket v0.1.x, stay on v0.1.3: v0.2.x and later require wicket v0.8.0, and adding it raises your host's wicket requirement to that version. On wicket v0.1.x, do not call `RefreshTokenStore.RemoveExpired`: those refresh tokens have no expiry, so it deletes all of them. Do not use `migrations.Down` to back out `000004` — it reverts every migration and deletes all data. See `docs/deployment-guide.md` for the pre-upgrade check, the refresh token backfill, the rollback procedure and the operational notes.
 
 ## License
 

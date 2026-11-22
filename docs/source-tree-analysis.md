@@ -47,7 +47,7 @@ wicket-pg/
 │   │   ├── session_fixture_test.go # session 套件入口
 │   │   ├── keymgmt_fixture_test.go # keymgmt 套件入口
 │   │   └── *_test.go            #   套件外的补充断言（独立拷贝语义等）
-│   └── e2e/                     #   真实 PostgreSQL e2e（22 个文件，103 个测试函数）
+│   └── e2e/                     #   真实 PostgreSQL e2e（22 个文件，106 个测试函数）
 │       ├── migrations_e2e_test.go        # 迁移生命周期/幂等/回滚/search_path
 │       ├── schema_record_e2e_test.go     # schema 契约列级断言
 │       ├── ci_job_e2e_test.go            # CI 配置静态契约（yaml 解析）
@@ -81,14 +81,14 @@ wicket-pg/
 - **门禁自证**：`discrimination_test.go` 故意构造违规（缺版权头、带上游标注）验证门禁判别力，本身也是门禁的一部分。
 - **迁移与 store 三方一致**：`migrations/schema_record_audit_test.go` 审计「设计记录 ↔ 迁移 SQL ↔ store 源码」一致；`clock_audit_test.go` 审计 SQL 无时钟函数。
 
-## 四、测试总量与分布（159 个测试函数，按 `^func Test` 计）
+## 四、测试总量与分布（162 个测试函数，按 `^func Test` 计）
 
 | 包 | 数量 |
 |---|---|
 | `store/` 单测 | 22 |
 | `migrations/` 审计 | 5 |
 | `tests/conformance/` | 23（含 11 个套件入口 + 补充断言） |
-| `tests/e2e/` | 103 |
+| `tests/e2e/` | 106 |
 | `tests/lineage/` | 6（3 门禁 + 3 探针） |
 
 ## 五、构建与测试命令

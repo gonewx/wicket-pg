@@ -14,12 +14,12 @@ wicket-pg 是 [wicket](https://github.com/gonewx/wicket)（OAuth 授权服务器
 
 | 项 | 状态 |
 |---|---|
-| 十一个 store 实现 | ✅ 完成（九个 grant 存储族 + 会话 + 密钥记录；第八个 grant 族为 PAR 的 `PushedAuthorizationRequestStore`（迁移 000005），第九个为 DCR 的 `ClientRegistrationStore`（同时实现 `ClientOriginLookup`，迁移 000006），两者已在 `main`、尚未发版） |
+| 十一个 store 实现 | ✅ 完成（九个 grant 存储族 + 会话 + 密钥记录；第八个 grant 族为 PAR 的 `PushedAuthorizationRequestStore`（迁移 000005），第九个为 DCR 的 `ClientRegistrationStore`（同时实现 `ClientOriginLookup`，迁移 000006），两者自 v0.3.0 起提供） |
 | 迁移入口 | ✅ 完成（`migrations.Up` / `Down`，go:embed SQL，幂等） |
 | 契约套件接入 | ✅ 三组 3.0.0 套件全部 MUST 级用例绿（storagetest / sessiontest / keymgmttest），十一个 `ConformsTo()` 均为 `3.0.0` |
 | 血缘门禁 | ✅ 三项全绿，判别力经探针自证 |
 | CI | ✅ 三 job（lineage-gates → build、conformance）合并阻塞；`conformance` 同时跑契约套件与 e2e |
-| 发布 | **`v0.2.0`** 已发布（2026-11-21，wicket v0.8.0 适配版，CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译；发布说明见 `CHANGELOG.md`）；**`v0.2.1`** 已发布（2026-11-21，更正 v0.2.0 升级说明：v0.1.x 签发的刷新令牌须先回填再 `RemoveExpired`，不改代码与 schema；CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译），新安装用 v0.2.1；`v0.1.0`、`v0.1.1`、`v0.1.2`、`v0.1.3` 为 v0.1.x 线（与 wicket v0.1.x 组合时用 v0.1.3；v0.1.0 因分发层分裂不推荐引用） |
+| 发布 | **`v0.2.0`** 已发布（2026-11-21，wicket v0.8.0 适配版，CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译；发布说明见 `CHANGELOG.md`）；**`v0.2.1`** 已发布（2026-11-21，更正 v0.2.0 升级说明：v0.1.x 签发的刷新令牌须先回填再 `RemoveExpired`，不改代码与 schema；CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译）；**`v0.3.0`**（新增 PAR 与 DCR store 及迁移 000005 / 000006，要求 wicket v0.8.0；发布说明见 `CHANGELOG.md` 的 `[0.3.0]` 段），新安装用 v0.3.0；`v0.1.0`、`v0.1.1`、`v0.1.2`、`v0.1.3` 为 v0.1.x 线（与 wicket v0.1.x 组合时用 v0.1.3；v0.1.0 因分发层分裂不推荐引用） |
 
 ## 技术栈
 

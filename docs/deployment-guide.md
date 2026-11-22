@@ -47,8 +47,8 @@ WICKET_PG_TEST_DATABASE_URL=... GOWORK=off go test ./tests/e2e/...          # = 
 4. **打 tag**（轻量 tag）：
 
 ```bash
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 5. **取用验证**（tag push 后立即执行）：在仓外空目录，用默认 GOPROXY（`proxy.golang.org`）与 checksum 数据库、本地工具链和全新的模块缓存，按消费者方式 `go get` 新 tag 并编译一个引用 `store` 与 `migrations` 的 main 包。本机 `go env GOPROXY` 若为镜像（如 `goproxy.cn`），必须按下面显式覆盖；`GOPRIVATE` / `GONOPROXY` / `GONOSUMDB` 一并置空，否则验证会绕过 proxy 与 sumdb，测不到分发层问题。v0.1.0 的分发层分裂正是缺少这一步的结果。整段在子 shell 中执行，`cd` 与环境变量不会泄漏到当前 shell，任一步失败即停止：
@@ -56,7 +56,7 @@ git push origin v0.2.1
 ```bash
 (
   set -e
-  V=v0.2.1; WICKET=v0.8.0
+  V=v0.3.0; WICKET=v0.8.0
   D=$(mktemp -d); trap 'chmod -R u+w "$D" 2>/dev/null; rm -rf "$D"' EXIT
   mkdir -p "$D/mod" "$D/cache" && cd "$D/mod"
   export GOWORK=off GOTOOLCHAIN=local GOFLAGS= \
@@ -76,12 +76,12 @@ git push origin v0.2.1
 )
 ```
 
-   任一步失败：先上报，不重打、不移动、不删除 tag；修正只能通过发新补丁版本（如 v0.2.2）完成。
+   任一步失败：先上报，不重打、不移动、不删除 tag；修正只能通过发新补丁版本（如 v0.3.1）完成。
 
 6. **创建 GitHub Release**（在仓库根目录执行）：发布说明从 `CHANGELOG.md` 截取该版本条目（`## [x.y.z]` 标题之后、下一个 `## ` 标题之前），与仓内同文；`--verify-tag` 保证 tag 不存在时失败而不是由 gh 自建 tag：
 
 ```bash
-V=v0.2.1
+V=v0.3.0
 awk -v h="## [${V#v}]" 'index($0,h)==1{f=1;next} f&&/^## /{exit} f' CHANGELOG.md > "/tmp/notes-$V.md"
 test -s "/tmp/notes-$V.md"
 NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh release create "$V" -R gonewx/wicket-pg --verify-tag --title "$V" --notes-file "/tmp/notes-$V.md"
@@ -89,7 +89,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh release create "$V" -R gonewx/wicke
 
 7. **发版纪律**：
    - **Go 版本标记两处形态不同且各自精确**：`go.mod` 的 `go 1.27` 是对下游的语言版本承诺（不带补丁号），`ci.yml` 的 `1.27.0` 是本仓构建环境 pin（取精确补丁版）。rc 已于 Go 1.27.0 发布后去除，`tests/e2e/ci_job_e2e_test.go` 分别精确比对两者，预发布值一律不得通过。
-   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译；v0.1.1 与 v0.1.2 可用但仍携带 rc directive——文档在 v0.1.x 线内只引用 v0.1.3（首个不携带 rc directive 的版本，也是与 wicket v0.1.x 组合时应停留的版本）；面向 wicket v0.8.0 的安装与升级引用 v0.2.1（v0.2.0 的升级说明建议升级前对各 store 调用 `RemoveExpired`，会删除 v0.1.x 签发的刷新令牌，已由 v0.2.1 更正）。
+   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译；v0.1.1 与 v0.1.2 可用但仍携带 rc directive——文档在 v0.1.x 线内只引用 v0.1.3（首个不携带 rc directive 的版本，也是与 wicket v0.1.x 组合时应停留的版本）；面向 wicket v0.8.0 的安装与升级引用 v0.3.0（v0.3.0 新增 PAR 与 DCR store；v0.2.0 的升级说明建议升级前对各 store 调用 `RemoveExpired`，会删除 v0.1.x 签发的刷新令牌，已由 v0.2.1 更正，v0.3.0 沿用更正后的说明）。
    - 提交信息保持功能中性（门禁扫全量 git 历史）。
 
 ## 四、远端操作注意事项
@@ -106,11 +106,27 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 
 本仓是库不是服务，无 Dockerfile / K8s 清单——「部署」即宿主集成：
 
-1. 宿主 `GOWORK=off go get github.com/gonewx/wicket-pg@v0.2.1`（要求 wicket v0.8.0；宿主仍在 wicket v0.1.x 时停留在 v0.1.3）；
+1. 宿主 `GOWORK=off go get github.com/gonewx/wicket-pg@v0.3.0`（要求 wicket v0.8.0；宿主仍在 wicket v0.1.x 时停留在 v0.1.3）；
 2. 启动序列中调用 `migrations.Up(ctx, pool)`（幂等）；
-3. 构造九个 store 注入 wicket（开启 wicket 的 PAR 特性时再加 `PushedAuthorizationRequestStore`；开启动态客户端注册或依赖它的特性时再加 `ClientRegistrationStore`，经 `ServerConfig.SetClientRegistrationStore` 注入，它同时实现 `storage.ClientOriginLookup` 并服务全部客户端读取，与 `SetClientStore` / `SetClients` / `SetClientsProvider` 互斥；全开共十一个。这两个 store 尚未发版，见 `CHANGELOG.md` Unreleased 段），装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。注意该比对在同一构建内恒成立，不能发现不兼容的适配器，返回值的可信度来自本仓的交付纪律（见 `docs/api-contracts.md` 第五节）。
+3. 构造九个 store 注入 wicket（开启 wicket 的 PAR 特性时再加 `PushedAuthorizationRequestStore`；开启动态客户端注册或依赖它的特性时再加 `ClientRegistrationStore`，经 `ServerConfig.SetClientRegistrationStore` 注入，它同时实现 `storage.ClientOriginLookup` 并服务全部客户端读取，与 `SetClientStore` / `SetClients` / `SetClientsProvider` 互斥；全开共十一个。这两个 store 自 v0.3.0 起提供，开启 DCR 前须先预置既有客户端，见下文「开启 DCR 前预置既有客户端」），装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。注意该比对在同一构建内恒成立，不能发现不兼容的适配器，返回值的可信度来自本仓的交付纪律（见 `docs/api-contracts.md` 第五节）。
 
-已在跑 v0.1.x 的宿主按下文第六节升级。
+已在跑 v0.2.x 的宿主升级到 v0.3.0：`GOWORK=off go get github.com/gonewx/wicket-pg@v0.3.0` 之后调用 `migrations.Up(ctx, pool)`，应用 000005、000006。两者各新建一张表（`pushed_authorization_requests`、`client_registrations`），不改既有表，不需要回填。开启 PAR 后宿主须定期调用 `PushedAuthorizationRequestStore.RemoveExpired`，wicket 不代为回收。已在跑 v0.1.x 的宿主按下文第六节升级。
+
+### 开启 DCR 前预置既有客户端
+
+经 `ServerConfig.SetClientRegistrationStore` 注入后，注册 store 是唯一的客户端来源：与 `SetClientStore` / `SetClients` / `SetClientsProvider` 并用时，wicket 在 `Freeze()` 时 panic；wicket 也没有静态客户端选项。因此切换前，要对每个既有的第一方 / 静态客户端调用一次 `RegisterClient`，把它写进 `client_registrations`。顺序是：先冻结旧客户端来源的变更，再预置，最后切换配置；滚动发布期间，新旧实例的客户端来源不同。
+
+- **`Client` 原样传入。** store 用 `storage.EncodeClient` 编码，codec 不做哈希：`Secret.Value` 里必须已经是 secret 的哈希值，不能是明文，哈希形式与 `SetClients` 中相同（wicket 的 `utils.Sha256`，与 wicket 注册端点存储的形式一致）。
+- **`RegistrationAccessTokenDigest` 有两种取法。**
+  - 留空串 `""`：wicket 的客户端管理端点（RFC 7592）对该客户端一律拒绝。推荐第一方客户端这样做。
+  - 由宿主自行生成注册访问令牌，摘要取 `clientregistration.RegistrationAccessTokenDigest(token)`，令牌由宿主自己保管。
+- **`RegistrationTime` 取客户端原创建时间或预置时刻，不要用零值**：管理响应里的 `client_id_issued_at` 取自这个字段。
+- **重复执行时返回 `storage.ErrDuplicateHandle`，视为「已预置」。** 它只表示该 id 已存在，重跑**不会**更新源端已改动的客户端。之后要修改，先 `FindClientRegistration` 读出，再带读到的修订号调用 `UpdateClientRegistration`。
+- **遇到 `ErrDuplicateHandle` 以外的错误要停下**：全部客户端都预置成功或已存在之前，不要切换。
+- **之后退回 `SetClients` / `SetClientStore` 时**，经 DCR 注册或修改的客户端不会带回。
+- **墓碑化的 client id 不能再预置**：删除留下的墓碑永久占住该 id。
+
+空摘要预置的行为（`FindClientById` 与 origin 查找可见、摘要列为空串而非 NULL、重复预置返回 `ErrDuplicateHandle` 且原行不变）由 `tests/e2e/client_registration_e2e_test.go` 锁住。
 
 宿主注意（已知风险，deferred-work 留档）：
 
@@ -120,9 +136,9 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 - **清理入口**：宿主自行按需调用各 store 的 `RemoveExpired(ctx, cutoff)`（显式一次性回收，返回计数），适配器不起后台任务。从 v0.1.x 升级的宿主，在完成 6.4 的刷新令牌回填之前，不要对刷新令牌调用 `RemoveExpired`。开启 PAR 的宿主应定期调用 `PushedAuthorizationRequestStore.RemoveExpired(ctx, cutoff)`，cutoff 取当前时间即可（`RetentionExpiration` 已含交互往返宽限）：PAR 记录写入频繁，wicket 不会替宿主回收。`ClientRegistrationStore` 没有回收方法：注册客户端没有服务端生命周期，删除只留墓碑行（不含 secret 哈希与注册访问令牌摘要），墓碑永久占住 client id。
 - **`migrations.Down` 是全量拆除**：它对所有已应用迁移逆序执行 down 文件，包括 `000001`（DROP 全部表），会删除所有表和数据。它不是回退单个迁移的手段，生产库不要调用。
 
-## 六、从 v0.1.x 升级到 v0.2.x
+## 六、从 v0.1.x 升级到 v0.2.x / v0.3.0
 
-本节按 v0.2.1 描述，v0.2.0 同样适用。v0.2.0 依赖 wicket v0.8.0，并带来迁移 `000004_scoped_removal_columns`：为 `authorization_codes` / `refresh_tokens` / `reference_tokens` 增加 `client_id`、`session_id` 定位列，为 `device_codes` 增加 `session_id` 定位列，为这 7 列与 `user_consents.client_id` 各建一个索引（共 8 个），并在同一事务内从 payload 回填存量行。8 个按 client / session 移除方法依赖这些列。
+本节按 v0.3.0 描述，v0.2.0 / v0.2.1 同样适用。v0.2.0 依赖 wicket v0.8.0，并带来迁移 `000004_scoped_removal_columns`：为 `authorization_codes` / `refresh_tokens` / `reference_tokens` 增加 `client_id`、`session_id` 定位列，为 `device_codes` 增加 `session_id` 定位列，为这 7 列与 `user_consents.client_id` 各建一个索引（共 8 个），并在同一事务内从 payload 回填存量行。8 个按 client / session 移除方法依赖这些列。
 
 > v0.2.0 的升级说明建议升级前先用各 store 的 `RemoveExpired` 回收过期记录。这条建议对刷新令牌不成立：照做会删除 v0.1.x 签发的全部刷新令牌，包括仍然有效的（原因见 6.4）。v0.2.1 已更正，以本节为准。
 
@@ -132,8 +148,8 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 
 1. **停掉所有旧版本写入方**。`Up` 跑完后，旧二进制的 INSERT 会让定位列为 NULL，旧二进制的 `UpdateRefreshToken` / `UpdateByUserCode` 会留下陈旧值；回填只在迁移事务内执行一次，事后不会补齐，按 client / session 移除会漏删这些行。先停旧写入方是必要条件，也已足够；本仓不提供补偿回填。
 2. **执行 NUL 预检**（见 6.2），有命中先处理。
-3. **在维护窗口内执行 `migrations.Up(ctx, pool)` 应用 000004**。000004 在单个事务内对四张表（`authorization_codes` / `refresh_tokens` / `reference_tokens` / `device_codes`）做全表 UPDATE 再建 8 个索引，期间持有锁。大表可以先对授权码、引用（访问）令牌、设备码三个 store 调用 `RemoveExpired(ctx, cutoff)` 回收过期记录，缩短锁持有时间：wicket v0.1.x 签发这三类记录时都带 `CreationTime` / `Lifetime`。user consent、persisted grant、CIBA 请求、session 等 store 在记录没有过期时间时 `expires_at`（session 为 `expires`）存 NULL，`RemoveExpired` 不删除这类记录，也不受影响。**回填完成前不要对刷新令牌调用 `RemoveExpired`**，见 6.4。
-4. **停用宿主对 `RefreshTokenStore.RemoveExpired` 的自动调用**（启动序列、cron、定时器等），等 6.4 的确认查询返回 0 行后再恢复；然后**启动 v0.2.1 写入方**，装配期把九个 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（当前均为 3.0.0；不要硬编码字面量；该比对的含义见第五节第 3 步）。
+3. **在维护窗口内执行 `migrations.Up(ctx, pool)` 应用 000004**。000004 在单个事务内对四张表（`authorization_codes` / `refresh_tokens` / `reference_tokens` / `device_codes`）做全表 UPDATE 再建 8 个索引，期间持有锁。大表可以先对授权码、引用（访问）令牌、设备码三个 store 调用 `RemoveExpired(ctx, cutoff)` 回收过期记录，缩短锁持有时间：wicket v0.1.x 签发这三类记录时都带 `CreationTime` / `Lifetime`。user consent、persisted grant、CIBA 请求、session 等 store 在记录没有过期时间时 `expires_at`（session 为 `expires`）存 NULL，`RemoveExpired` 不删除这类记录，也不受影响。**回填完成前不要对刷新令牌调用 `RemoveExpired`**，见 6.4。同一次 `Up` 还会应用 000005 / 000006（各建一张新表，无需回填）。
+4. **停用宿主对 `RefreshTokenStore.RemoveExpired` 的自动调用**（启动序列、cron、定时器等），等 6.4 的确认查询返回 0 行后再恢复；然后**启动 v0.3.0 写入方**，装配期把所注入的全部 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（当前均为 3.0.0；不要硬编码字面量；该比对的含义见第五节第 3 步）。
 5. **回填 v0.1.x 签发的刷新令牌**（见 6.4），完成后才可以对刷新令牌调用 `RemoveExpired`。回填用的是 v0.2.x 的公开端口，须在 000004 应用之后、首次回收刷新令牌之前执行。
 
 ### 6.2 NUL 预检
@@ -153,8 +169,8 @@ SELECT handle FROM device_codes        WHERE position('\u0000' in convert_from(d
 
 ### 6.3 回退
 
-- **只回退二进制**（换回 v0.1.3）时，宿主还须把 wicket 依赖退回 v0.1.x 并重新构建（v0.1.3 不能与 wicket v0.8.0 组合）。schema 留在 000004：旧二进制不认识定位列，它新写入的行定位列为 NULL，它更新过的行定位列为陈旧值。再次升级到 v0.2.x 时，`Up` 看到 000004 已记账，**不会重新回填**，需要按下面的手工流程重做 000004。
-- **手工重做 000004**（需先停掉所有写入方，并先执行 6.2 的 NUL 预检、处理命中：回退期间旧二进制写入的 payload 同样可能含 `\u0000`，否则下面的事务提交后 `Up` 会整体回滚，schema 停在 000003 形态）。down 文件随模块发布，没有源码树时可在模块缓存中找到：`$(go env GOMODCACHE)/github.com/gonewx/wicket-pg@v0.2.1/migrations/000004_scoped_removal_columns.down.sql`。手工执行时 down 文件本身不带事务，须与撤销记账放进同一个事务，避免「列已删除、000004 仍记账」的半完成状态：
+- **只回退二进制**（换回 v0.1.3）时，宿主还须把 wicket 依赖退回 v0.1.x 并重新构建（v0.1.3 不能与 wicket v0.8.0 组合）。schema 留在 000004：旧二进制不认识定位列，它新写入的行定位列为 NULL，它更新过的行定位列为陈旧值。再次升级到 v0.2.x 或更高版本时，`Up` 看到 000004 已记账，**不会重新回填**，需要按下面的手工流程重做 000004。
+- **手工重做 000004**（需先停掉所有写入方，并先执行 6.2 的 NUL 预检、处理命中：回退期间旧二进制写入的 payload 同样可能含 `\u0000`，否则下面的事务提交后 `Up` 会整体回滚，schema 停在 000003 形态）。down 文件随模块发布，没有源码树时可在模块缓存中找到：`$(go env GOMODCACHE)/github.com/gonewx/wicket-pg@v0.3.0/migrations/000004_scoped_removal_columns.down.sql`。手工执行时 down 文件本身不带事务，须与撤销记账放进同一个事务，避免「列已删除、000004 仍记账」的半完成状态：
 
   ```sql
   BEGIN;

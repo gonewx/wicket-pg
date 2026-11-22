@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file; releases before
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+This release adds PostgreSQL stores for two optional wicket v0.8.0 ports: pushed authorization requests (PAR) and dynamic client registration. It still requires wicket v0.8.0; the go directive stays `go 1.27`. Existing stores, their schema and the Go API are unchanged.
+
+### Upgrading from 0.2.x
+
+- **Run `go get`, then `migrations.Up`.** Upgrade the module with `GOWORK=off go get github.com/gonewx/wicket-pg@v0.3.0`, then call `migrations.Up(ctx, pool)` to apply `000005` and `000006`. Each creates one new table and touches no existing table; neither needs a backfill. A host that enables PAR must call `PushedAuthorizationRequestStore.RemoveExpired` periodically; wicket does not reclaim these records for it.
+- **Seed existing clients before enabling dynamic client registration.** Once `ServerConfig.SetClientRegistrationStore` is used, the client registration store is the only client source: wicket panics at `Freeze()` if `SetClientStore`, `SetClients` or `SetClientsProvider` is also used, and it has no option for static clients. Before switching, call `RegisterClient` once for each existing first-party or static client. Do it in this order: freeze changes to the old client source, seed, then switch the configuration; during a rolling deployment, old and new instances read clients from different sources.
+  - Pass the `Client` as it is. The codec does not hash anything: each `Secret.Value` must already hold the hashed secret, never the plaintext, in the same hashed form as in `SetClients` (wicket's `utils.Sha256`, the form wicket's registration endpoint stores).
+  - `RegistrationAccessTokenDigest`: leave it empty (`""`), and wicket's client management endpoints (RFC 7592) refuse every request for that client; this is the recommended choice for first-party clients. Alternatively, generate a registration access token yourself, store `clientregistration.RegistrationAccessTokenDigest(token)` as the digest and keep the token on your side.
+  - `RegistrationTime`: use the client's original creation time or the time of seeding, not the zero value: the management responses report it as `client_id_issued_at`.
+  - Running the seeding again returns `storage.ErrDuplicateHandle` for each client already present; treat it as already seeded. It only means the id exists: a rerun does not update a client that has since changed in the source. To change a seeded client later, use `FindClientRegistration` and then `UpdateClientRegistration` with the revision you read.
+  - Stop on any error other than `storage.ErrDuplicateHandle`, and do not switch until every client has been seeded or already exists.
+  - Switching back to `SetClients` or `SetClientStore` later does not carry over clients registered or changed through dynamic client registration.
+  - A removed client id leaves a tombstone and cannot be seeded again.
+
 ### Added
 
 - `PushedAuthorizationRequestStore`, a PostgreSQL implementation of wicket's optional `storage.PushedAuthorizationRequestStore` port (PAR, RFC 9126), built with `store.NewPushedAuthorizationRequestStore(pool, logger)`. Writes are insert-only (an existing key fails with `storage.ErrDuplicateHandle`); `GetPushedAuthorizationRequest` reads without consuming; `TakePushedAuthorizationRequest` reads and deletes in a single statement, so of several concurrent takes of one key exactly one succeeds; `RemoveExpired` deletes records whose `RetentionExpiration` precedes the cutoff and returns the count. wicket never reclaims these records itself: a host that enables PAR must call `RemoveExpired` periodically (a cutoff of the current time is enough), or the table keeps growing. Neither read judges expiry. Once a take's delete has committed, a decode or transport error (any error other than `storage.ErrNotFound`) means the request may already be consumed. The store passes the wicket v0.8.0 `RunPushedAuthorizationRequestStoreSuite` (`SuiteVersion` 3.0.0) on PostgreSQL 15, and its `ConformsTo()` returns `3.0.0`.
@@ -56,6 +72,8 @@ Releases for the wicket v0.1.x line. Published tags are immutable, so these note
 - **0.1.1 and 0.1.2 - 2026-08-08**: usable, but they carry the prerelease go directive `go 1.27rc1`.
 - **0.1.0 - 2026-08-08**: do not use. Fetched through the default Go module proxy it does not build, because the content served by the proxy and checksum database differs from the repository tag.
 
+[Unreleased]: https://github.com/gonewx/wicket-pg/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/gonewx/wicket-pg/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/gonewx/wicket-pg/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gonewx/wicket-pg/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/gonewx/wicket-pg/releases/tag/v0.1.3
