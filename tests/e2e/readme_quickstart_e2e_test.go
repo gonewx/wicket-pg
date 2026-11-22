@@ -78,7 +78,8 @@ func TestE2EReadmeInstallCommandPinsRealModule(t *testing.T) {
 
 // TestE2EReadmeUpgradeSectionNamesMigrationAndFallback verifies the upgrade
 // guidance a v0.1.x host depends on: stop every old writer first (rows an old
-// build writes after the migration are never backfilled), apply migration
+// build writes after the migration are never backfilled), run the NUL
+// pre-check (a payload holding \u0000 rolls the whole migration back), apply migration
 // 000004 (the removal-by-client and removal-by-session methods query the
 // locator columns it adds and backfills), never back out with
 // migrations.Down (it drops every table), and stay on v0.1.3 while wicket
@@ -88,6 +89,7 @@ func TestE2EReadmeUpgradeSectionNamesMigrationAndFallback(t *testing.T) {
 
 	for _, claim := range []string{
 		"Stop every writer still running a v0.1.x build",
+		"Run the NUL pre-check",
 		"apply migration 000004",
 		"Do not use `migrations.Down` to back out `000004`",
 		"stay on v0.1.3",

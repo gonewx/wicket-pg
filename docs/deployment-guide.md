@@ -71,7 +71,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh <command>
 
 1. 宿主 `GOWORK=off go get github.com/gonewx/wicket-pg@v0.2.0`（要求 wicket v0.8.0；宿主仍在 wicket v0.1.x 时停留在 v0.1.3）；
 2. 启动序列中调用 `migrations.Up(ctx, pool)`（幂等）；
-3. 构造九个 store 注入 wicket，装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。
+3. 构造九个 store 注入 wicket，装配期调用各 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（`storagetest` / `sessiontest` / `keymgmttest`，当前均为 3.0.0；不要硬编码字面量）。注意该比对在同一构建内恒成立，不能发现不兼容的适配器，返回值的可信度来自本仓的交付纪律（见 `docs/api-contracts.md` 第五节）。
 
 已在跑 v0.1.x 的宿主按下文第六节升级。
 
@@ -94,7 +94,7 @@ v0.2.0 依赖 wicket v0.8.0，并带来迁移 `000004_scoped_removal_columns`：
 1. **停掉所有旧版本写入方**。`Up` 跑完后，旧二进制的 INSERT 会让定位列为 NULL，旧二进制的 `UpdateRefreshToken` / `UpdateByUserCode` 会留下陈旧值；回填只在迁移事务内执行一次，事后不会补齐，按 client / session 移除会漏删这些行。先停旧写入方是必要条件，也已足够；本仓不提供补偿回填。
 2. **执行 NUL 预检**（见 6.2），有命中先处理。
 3. **在维护窗口内执行 `migrations.Up(ctx, pool)` 应用 000004**。000004 在单个事务内对四张表（`authorization_codes` / `refresh_tokens` / `reference_tokens` / `device_codes`）做全表 UPDATE 再建 8 个索引，期间持有锁。大表宜先用各 store 的 `RemoveExpired(ctx, cutoff)` 回收过期记录，缩短锁持有时间。
-4. **启动 v0.2.0 写入方**，装配期把九个 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（当前均为 3.0.0；不要硬编码字面量）。
+4. **启动 v0.2.0 写入方**，装配期把九个 store 的 `ConformsTo()` 分别与对应套件的 `SuiteVersion` 常量比对（当前均为 3.0.0；不要硬编码字面量；该比对的含义见第五节第 3 步）。
 
 ### 6.2 NUL 预检
 
@@ -114,7 +114,7 @@ SELECT handle FROM device_codes        WHERE position('\u0000' in convert_from(d
 ### 6.3 回退
 
 - **只回退二进制**（换回 v0.1.3）时，宿主还须把 wicket 依赖退回 v0.1.x 并重新构建（v0.1.3 不能与 wicket v0.8.0 组合）。schema 留在 000004：旧二进制不认识定位列，它新写入的行定位列为 NULL，它更新过的行定位列为陈旧值。再次升级到 v0.2.0 时，`Up` 看到 000004 已记账，**不会重新回填**，需要按下面的手工流程重做 000004。
-- **手工重做 000004**（需先停掉所有写入方）。down 文件随模块发布，没有源码树时可在模块缓存中找到：`$(go env GOMODCACHE)/github.com/gonewx/wicket-pg@v0.2.0/migrations/000004_scoped_removal_columns.down.sql`。手工执行时 down 文件本身不带事务，须与撤销记账放进同一个事务，避免「列已删除、000004 仍记账」的半完成状态：
+- **手工重做 000004**（需先停掉所有写入方，并先执行 6.2 的 NUL 预检、处理命中：回退期间旧二进制写入的 payload 同样可能含 `\u0000`，否则下面的事务提交后 `Up` 会整体回滚，schema 停在 000003 形态）。down 文件随模块发布，没有源码树时可在模块缓存中找到：`$(go env GOMODCACHE)/github.com/gonewx/wicket-pg@v0.2.0/migrations/000004_scoped_removal_columns.down.sql`。手工执行时 down 文件本身不带事务，须与撤销记账放进同一个事务，避免「列已删除、000004 仍记账」的半完成状态：
 
   ```sql
   BEGIN;

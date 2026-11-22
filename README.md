@@ -72,7 +72,7 @@ _ = store.NewKeyRecordStore(pool, logger)
 
 ## Upgrading from v0.1.x
 
-Moving the host from wicket v0.1.x to v0.8.0 brings its own changes; read wicket's CHANGELOG before upgrading. v0.2.0 adds migration `000004`, which gives the authorization code, refresh token and reference token tables visible `client_id` / `session_id` columns and the device code table a visible `session_id` column, indexes them (plus `user_consents.client_id`), and backfills existing rows from their payload. The removal-by-client and removal-by-session methods rely on these columns.
+Moving the host from wicket v0.1.x to v0.8.0 brings its own changes; read wicket's [CHANGELOG](https://github.com/gonewx/wicket/blob/main/CHANGELOG.md) before upgrading. v0.2.0 adds migration `000004`, which gives the authorization code, refresh token and reference token tables visible `client_id` / `session_id` columns and the device code table a visible `session_id` column, indexes them (plus `user_consents.client_id`), and backfills existing rows from their payload. The removal-by-client and removal-by-session methods rely on these columns.
 
 1. Stop every writer still running a v0.1.x build. A v0.1.x build writing after `000004` leaves the new columns `NULL` on insert and stale on update; the backfill runs only once, inside the migration, so those rows would be silently missed by later removals by client or session.
 2. Run the NUL pre-check from `docs/deployment-guide.md` section 6.2 on the authorization code, refresh token, reference token and device code tables, and clear any hits: a payload holding `\u0000` makes `000004` fail and roll back.
