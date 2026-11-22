@@ -91,13 +91,17 @@ func (s *AuthorizationCodeStore) RemoveAuthorizationCode(ctx context.Context, ha
 // taken like any other. If the payload fails to decode after the delete has
 // committed, the row is already removed, the caller gets a wrapped decode
 // error (not storage.ErrNotFound), and the code is not restored: a
-// single-use code is consumed on take.
+// single-use code is consumed on take. The same holds for a transport
+// failure (context cancellation, lost connection) after the delete has
+// committed but before the returned row is read: any error other than
+// storage.ErrNotFound may mean the code was already consumed, and a retry
+// then misses with storage.ErrNotFound.
 func (s *AuthorizationCodeStore) TakeAuthorizationCode(ctx context.Context, handle string) (*models.AuthorizationCode, error) {
 	var payload []byte
 	err := s.pool.QueryRow(ctx,
 		"DELETE FROM authorization_codes WHERE handle = $1 RETURNING payload", handle).Scan(&payload)
 	if err != nil {
-		return nil, mapReadErr(err, storage.ErrNotFound)
+		return nil, fmt.Errorf("take authorization code: %w", mapReadErr(err, storage.ErrNotFound))
 	}
 	code := new(models.AuthorizationCode)
 	if err := s.codec.decode(payload, code); err != nil {

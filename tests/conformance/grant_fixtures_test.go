@@ -29,6 +29,9 @@ import (
 //
 // Each factory is independent: no schema name, pool, or constructor state is
 // shared between the seven entries (AC-3, AD-9).
+//
+// The MUST/MAY case counts in the comments below are those of storagetest
+// SuiteVersion 3.0.0 (wicket v0.8.0); re-count them on every suite bump.
 
 // TestAuthorizationCodeStoreSuite runs the authorization code conformance
 // suite (17 MUST cases plus the MAY credential case, enabled via WithMay)
