@@ -9,13 +9,13 @@
 - **模块:** `github.com/gonewx/wicket-pg`
 - **架构:** 端口与适配器（六边形）——wicket 定义端口与契约套件，本仓是平级适配器仓
 - **数据库:** PostgreSQL 15+（`pgx/v5` 原生驱动，不经 `database/sql`）
-- **状态:** 实现完成，已适配 wicket v0.8.0（套件 3.0.0、迁移 000004）；文档按 v0.2.0 描述。已发布 v0.1.0 / v0.1.1 / v0.1.2 / v0.1.3（与 wicket v0.1.x 组合时用 v0.1.3）
+- **状态:** 实现完成，已适配 wicket v0.8.0（套件 3.0.0、迁移 000004）。已发布 v0.2.0（2026-11-21，面向 wicket v0.8.0，发布说明见 `CHANGELOG.md`）与 v0.1.0 / v0.1.1 / v0.1.2 / v0.1.3（与 wicket v0.1.x 组合时用 v0.1.3）
 
 ### 快速参考
 
 | 项 | 值 |
 |---|---|
-| 推荐版本 | `v0.2.0`（要求 wicket v0.8.0；升级须先停旧写入方再 `Up` 应用 000004，见部署指南第六节）；与 wicket v0.1.x 组合时用 `v0.1.3`（v0.1.x 线最新发布；v0.1.0 因分发层分裂不推荐引用） |
+| 推荐版本 | `v0.2.0`（已发布；要求 wicket v0.8.0；升级须先停旧写入方再 `Up` 应用 000004，见部署指南第六节）；与 wicket v0.1.x 组合时用 `v0.1.3`（v0.1.x 线最新发布；v0.1.0 因分发层分裂不推荐引用） |
 | 关键依赖 | `github.com/gonewx/wicket v0.8.0`（三套件 `SuiteVersion` 3.0.0，九个 `ConformsTo()` 均返回 3.0.0）、`github.com/jackc/pgx/v5 v5.10.0`、`gopkg.in/yaml.v3 v3.0.1`（仅测试） |
 | 入口点 | `store.NewXxxStore(pool, logger)` × 9、`migrations.Up/Down(ctx, pool)` |
 | 测试总量 | 139 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |
