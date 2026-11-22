@@ -6,10 +6,12 @@
 // grant-family stores (the pushed authorization request store reclaims on
 // retention_expiration) and DeleteExpired on the session store each reclaim
 // only records whose stored expiry strictly precedes the caller-supplied
-// cutoff — boundary records (expires_at == cutoff) survive, NULL-expiry
-// records are never touched, the returned count matches the deleted rows
-// exactly, a later cutoff reclaims the survivors, and expired records stay
-// readable until reclaimed (no SQL-level expiry filtering). The
+// cutoff — boundary records (stored expiry == cutoff) survive, NULL-expiry
+// records are never touched (the pushed authorization request table has no
+// NULL form: retention_expiration is NOT NULL), the returned count matches
+// the deleted rows exactly, a later cutoff reclaims the survivors, and
+// expired records stay readable until reclaimed (no SQL-level expiry
+// filtering). The
 // no-background-goroutine property is covered by each conformance suite's
 // NoBackgroundGoroutines MUST case and is not re-tested here. The suite is
 // gated behind WICKET_PG_TEST_DATABASE_URL so the plain test run stays
@@ -35,7 +37,9 @@ import (
 // The read closure returns nil while the record is readable and the store's
 // missing sentinel after reclamation; reclaim is the RemoveExpired or
 // DeleteExpired entry. The null identifier is empty for the CreationTime +
-// Lifetime family, whose writes always derive a non-NULL expires_at.
+// Lifetime family, whose writes always derive a non-NULL expires_at, and for
+// the pushed authorization request store, whose retention_expiration column
+// is NOT NULL.
 type reclamationFixture struct {
 	expired, boundary, alive, null string
 	read                           func(ctx context.Context, key string) error
@@ -45,7 +49,9 @@ type reclamationFixture struct {
 
 // TestE2EExpiryReclamationUnified is the unified nine-store reclamation
 // matrix (AC-1/AC-2/AC-4/AC-5): one table-driven case per lifecycle store,
-// each seeding expired / boundary / alive / NULL-expiry records and driving
+// each seeding expired / boundary / alive records, plus NULL-expiry records
+// where the store has a NULL form (not the CreationTime + Lifetime family,
+// not pushed authorization requests), and driving
 // the same assertion sequence — pre-cleanup readability of expired records,
 // exact reclaim count, sentinel reads after cleanup, survivor retention, and
 // a second reclaim with a larger cutoff that takes boundary plus alive with

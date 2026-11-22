@@ -112,7 +112,8 @@ func TestClockAuditStoreCleanupSQL(t *testing.T) {
 		// mentioning "concurrent".
 		for _, variant := range []string{
 			"expires_at <=", "expires <=", "expires_at IS NULL", "expires IS NULL",
-			"retention_expiration <=", "entry_expiration <", "entry_expiration <=",
+			"retention_expiration <=", "retention_expiration IS NULL",
+			"retention_expiration IS NOT NULL", "entry_expiration <",
 			"INTERVAL",
 		} {
 			if strings.Contains(src, variant) {

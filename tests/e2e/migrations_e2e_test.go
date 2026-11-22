@@ -262,6 +262,30 @@ func TestE2ESchemaContract(t *testing.T) {
 	if !hasPrimaryKey(t, pool, "user_consents", "subject_id", "client_id") {
 		t.Errorf("user_consents lacks composite PK (subject_id, client_id)")
 	}
+
+	// pushed_authorization_requests nullability: RemoveExpired's statement
+	// carries no IS NOT NULL guard because retention_expiration is NOT NULL
+	// (schema design record exception 9). Relaxing any of these columns would
+	// let rows escape reclamation silently, so pin every column's
+	// nullability; only client_id (an empty ClientId) may be NULL.
+	parNullable := map[string]bool{
+		"key":                  false,
+		"client_id":            true,
+		"creation_time":        false,
+		"entry_expiration":     false,
+		"retention_expiration": false,
+		"payload":              false,
+	}
+	for column, want := range parNullable {
+		got, ok := columnNullable(t, pool, "pushed_authorization_requests", column)
+		if !ok {
+			t.Errorf("table pushed_authorization_requests is missing column %s", column)
+			continue
+		}
+		if got != want {
+			t.Errorf("pushed_authorization_requests.%s nullable = %v, want %v", column, got, want)
+		}
+	}
 }
 
 // TestE2EKeyRecordsPartialUniqueIndex verifies the partial unique index on
@@ -463,6 +487,20 @@ func columnType(t *testing.T, pool *pgxpool.Pool, table, column string) string {
 		return ""
 	}
 	return udt
+}
+
+// columnNullable reports whether table.column accepts NULL; ok is false
+// when the column does not exist.
+func columnNullable(t *testing.T, pool *pgxpool.Pool, table, column string) (nullable, ok bool) {
+	t.Helper()
+	var isNullable string
+	err := pool.QueryRow(t.Context(),
+		"SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2",
+		table, column).Scan(&isNullable)
+	if err != nil {
+		return false, false
+	}
+	return isNullable == "YES", true
 }
 
 func hasPrimaryKey(t *testing.T, pool *pgxpool.Pool, table string, columns ...string) bool {

@@ -20,7 +20,7 @@ wicket-pg/
 │   ├── pushed_authorization_request.go        # PushedAuthorizationRequestStore（PAR，可选端口，原子取出）
 │   ├── session.go               #   SessionStore（会话，text[] 原子追加）
 │   ├── key_records.go           #   KeyRecordStore（密钥记录，部分唯一索引）
-│   └── *_test.go                #   单测（基座/编解码/错误映射/ConformsTo/按条件移除 scoped_removal_test.go）
+│   └── *_test.go                #   单测（基座/编解码/错误映射/ConformsTo/按条件移除 scoped_removal_test.go/PAR nil 守卫）
 ├── migrations/                  # ★ 迁移入口
 │   ├── migrations.go            #   Up / Down（go:embed *.sql，幂等记账）
 │   ├── 000001_init.up.sql       #   初始 schema：9 业务表 + 记账表 + 13 索引
@@ -78,11 +78,11 @@ wicket-pg/
 - **门禁自证**：`discrimination_test.go` 故意构造违规（缺版权头、带上游标注）验证门禁判别力，本身也是门禁的一部分。
 - **迁移与 store 三方一致**：`migrations/schema_record_audit_test.go` 审计「设计记录 ↔ 迁移 SQL ↔ store 源码」一致；`clock_audit_test.go` 审计 SQL 无时钟函数。
 
-## 四、测试总量与分布（148 个测试函数，按 `^func Test` 计）
+## 四、测试总量与分布（149 个测试函数，按 `^func Test` 计）
 
 | 包 | 数量 |
 |---|---|
-| `store/` 单测 | 20 |
+| `store/` 单测 | 21 |
 | `migrations/` 审计 | 5 |
 | `tests/conformance/` | 22（含 10 个套件入口 + 补充断言） |
 | `tests/e2e/` | 95 |
