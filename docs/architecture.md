@@ -121,7 +121,7 @@ erDiagram
 - **原子取出（AD-12）**：`TakeAuthorizationCode` 单语句 `DELETE ... WHERE handle = $1 RETURNING payload`，`TakePushedAuthorizationRequest` 单语句 `DELETE ... WHERE key = $1 RETURNING payload`；0 行返 `ErrNotFound`，不开显式事务、不先 SELECT 再 DELETE。
 - **推送授权请求（迁移 000005）**：`pushed_authorization_requests` 以 `key`（只经 `storage.PushedAuthorizationRequestKey` 生成）为主键；`client_id` 与三个时间列写入时复制、只写不读，模型只从 payload 解码（`timestamptz` 只精确到微秒）；回收列 `retention_expiration` 为 `NOT NULL`，`RemoveExpired` 写作 `DELETE ... WHERE retention_expiration < $1`。
 - **按条件移除（AD-13）**：空参数直接返回 `(0, nil)`、不发 SQL；否则单语句 `DELETE ... WHERE <定位列> = $1`，返回 `RowsAffected`。
-- **清理**：`expires_at` 列（session 特例叫 `expires`，PAR 为 `NOT NULL` 的 `retention_expiration`）+ 对应索引；NULL 表示永不过期。
+- **清理**：`expires_at` 列（session 特例叫 `expires`）+ 对应索引，这两类列为 NULL 表示永不过期；PAR 的回收列 `retention_expiration` 为 `NOT NULL`，没有 NULL 形态，零值照常回收。
 - **版本守卫**：仅 `refresh_tokens` 与 `key_records` 有 `version bigint` 列（AD-3）。
 - **唯一性**：`key_records` 部分唯一索引（`phase <> 'retired'`）；`device_codes.user_code` 唯一索引双职责（读路径 + 重复拒绝）。
 

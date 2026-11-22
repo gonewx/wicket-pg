@@ -295,3 +295,38 @@ func TestE2EPushedAuthorizationRequestTakeUndecodablePayload(t *testing.T) {
 		t.Errorf("undecodable row still present after Take (%d rows), want removed", count)
 	}
 }
+
+// TestE2EPushedAuthorizationRequestGetUndecodablePayload is the Get
+// counterpart of the undecodable take: the caller gets a wrapped decode
+// error, not storage.ErrNotFound, and the row is left in place, because Get
+// never consumes.
+func TestE2EPushedAuthorizationRequestGetUndecodablePayload(t *testing.T) {
+	s, pool := newPARStore(t)
+	key := parKey(t, "undecodable-get")
+	if _, err := pool.Exec(t.Context(),
+		`INSERT INTO pushed_authorization_requests
+			(key, client_id, creation_time, entry_expiration, retention_expiration, payload)
+			VALUES ($1, 'client-bad', $2, $2, $2, '{"version":1,"dataProtected":false,"payload":"!!not-base64!!"}'::jsonb)`,
+		key, fixedNow); err != nil {
+		t.Fatalf("insert undecodable row: %v", err)
+	}
+
+	got, err := s.GetPushedAuthorizationRequest(t.Context(), key)
+	if err == nil {
+		t.Fatalf("Get of an undecodable row succeeded with %+v", got)
+	}
+	if errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("Get error = %v, want a decode error, not storage.ErrNotFound", err)
+	}
+	if got != nil {
+		t.Errorf("Get record = %+v, want nil", got)
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(),
+		"SELECT count(*) FROM pushed_authorization_requests WHERE key = $1", key).Scan(&count); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("undecodable row count after Get = %d, want 1 (Get does not consume)", count)
+	}
+}

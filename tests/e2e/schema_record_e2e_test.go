@@ -249,24 +249,26 @@ func TestE2ESchemaRecordIndexDefinitionsMatchPaths(t *testing.T) {
 // cleanupPath describes one record-declared cleanup path: the table, the
 // expiry column (sessions uses "expires", pushed authorization requests
 // "retention_expiration", everything else "expires_at"), and the index that
-// must serve the DELETE. retention_expiration is NOT NULL, so the IS NOT
-// NULL guard of the probe query is redundant for it but harmless.
+// must serve the DELETE. unguarded marks a NOT NULL column whose store
+// issues the DELETE without the IS NOT NULL guard
+// (retention_expiration), so the probe uses that exact shape.
 type cleanupPath struct {
-	table string
-	col   string
-	index string
+	table     string
+	col       string
+	index     string
+	unguarded bool
 }
 
 var cleanupPaths = []cleanupPath{
-	{"authorization_codes", "expires_at", "idx_authorization_codes_expires_at"},
-	{"refresh_tokens", "expires_at", "idx_refresh_tokens_expires_at"},
-	{"reference_tokens", "expires_at", "idx_reference_tokens_expires_at"},
-	{"user_consents", "expires_at", "idx_user_consents_expires_at"},
-	{"persisted_grants", "expires_at", "idx_persisted_grants_expires_at"},
-	{"device_codes", "expires_at", "idx_device_codes_expires_at"},
-	{"backchannel_auth_requests", "expires_at", "idx_backchannel_auth_requests_expires_at"},
-	{"sessions", "expires", "idx_sessions_expires"},
-	{"pushed_authorization_requests", "retention_expiration", "idx_pushed_authorization_requests_retention_expiration"},
+	{"authorization_codes", "expires_at", "idx_authorization_codes_expires_at", false},
+	{"refresh_tokens", "expires_at", "idx_refresh_tokens_expires_at", false},
+	{"reference_tokens", "expires_at", "idx_reference_tokens_expires_at", false},
+	{"user_consents", "expires_at", "idx_user_consents_expires_at", false},
+	{"persisted_grants", "expires_at", "idx_persisted_grants_expires_at", false},
+	{"device_codes", "expires_at", "idx_device_codes_expires_at", false},
+	{"backchannel_auth_requests", "expires_at", "idx_backchannel_auth_requests_expires_at", false},
+	{"sessions", "expires", "idx_sessions_expires", false},
+	{"pushed_authorization_requests", "retention_expiration", "idx_pushed_authorization_requests_retention_expiration", true},
 }
 
 // TestE2ESchemaRecordCleanupPathsHitTheirIndexes verifies the record's
@@ -291,8 +293,11 @@ func TestE2ESchemaRecordCleanupPathsHitTheirIndexes(t *testing.T) {
 	}
 
 	for _, path := range cleanupPaths {
-		query := "EXPLAIN (COSTS OFF) DELETE FROM " + path.table +
-			" WHERE " + path.col + ` IS NOT NULL AND ` + path.col + ` < '2099-01-01'`
+		where := path.col + ` IS NOT NULL AND ` + path.col + ` < '2099-01-01'`
+		if path.unguarded {
+			where = path.col + ` < '2099-01-01'`
+		}
+		query := "EXPLAIN (COSTS OFF) DELETE FROM " + path.table + " WHERE " + where
 		if !planUsesIndex(t, conn, query, path.index) {
 			t.Errorf("%s cleanup plan does not use %s", path.table, path.index)
 		}

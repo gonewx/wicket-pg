@@ -122,10 +122,10 @@ func TestBackchannelAuthenticationRequestStoreSuite(t *testing.T) {
 }
 
 // TestPushedAuthorizationRequestStoreSuite runs the pushed authorization
-// request conformance suite (15 MUST cases plus the 2 MAY cases — returned
-// copy isolation and the credential — enabled via WithMay) against the pgx-backed adapter on a real
-// PostgreSQL server. The suite is skipped when WICKET_PG_TEST_DATABASE_URL is
-// unset.
+// request conformance suite (15 MUST cases plus the 2 MAY cases
+// ReturnedCopyIsolated and ConformsToCredential, enabled via WithMay)
+// against the pgx-backed adapter on a real PostgreSQL server. The suite is
+// skipped when WICKET_PG_TEST_DATABASE_URL is unset.
 func TestPushedAuthorizationRequestStoreSuite(t *testing.T) {
 	storagetest.RunPushedAuthorizationRequestStoreSuite(t,
 		NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) storage.PushedAuthorizationRequestStore {

@@ -46,7 +46,7 @@ if err := migrations.Up(ctx, pool); err != nil {
 
 ### Inject the stores
 
-Ten store constructors are provided, one per wicket storage port. `NewPushedAuthorizationRequestStore` is needed only when the host enables wicket's PAR feature, which requires an injected `storage.PushedAuthorizationRequestStore`. Each takes the host-owned `*pgxpool.Pool` and a `*slog.Logger` (a nil logger falls back to `slog.Default()`):
+Ten store constructors are provided, one per wicket store port. `NewPushedAuthorizationRequestStore` is needed only when the host enables wicket's PAR feature, which requires a `storage.PushedAuthorizationRequestStore` injected with `ServerConfig.SetPushedAuthorizationRequestStore` (or `SetPushedAuthorizationRequestStoreProvider`). Each takes the host-owned `*pgxpool.Pool` and a `*slog.Logger` (a nil logger falls back to `slog.Default()`):
 
 ```go
 import (

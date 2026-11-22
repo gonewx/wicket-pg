@@ -121,7 +121,7 @@ func (s *BackchannelAuthenticationRequestStore) ConformsTo() string
 
 ### 推送授权请求（`storage.PushedAuthorizationRequestStore`，PAR，可选端口）
 
-宿主开启 wicket 的 PAR 特性时须显式注入此端口；未开启 PAR 的宿主不需要构造它。
+宿主开启 wicket 的 PAR 特性时须经 `ServerConfig.SetPushedAuthorizationRequestStore`（或 `SetPushedAuthorizationRequestStoreProvider`）显式注入此端口；未开启 PAR 的宿主不需要构造它。
 
 ```go
 func (s *PushedAuthorizationRequestStore) StorePushedAuthorizationRequest(ctx context.Context, key string, request *models.PushedAuthorizationRequest) error  // insert-only
@@ -186,7 +186,8 @@ func Down(ctx context.Context, pool *pgxpool.Pool) error  // 逆序回滚已应�
 - 单记录读**不返 `(nil, nil)`**。
 - 列表方法空结果返**空非 nil slice**（`[]*Xxx{}`），不返哨兵错误。
 - 错误判定用 `errors.Is`（哨兵是 `%w` 链上的一环）。
-- **原子取出（AD-12）**：`TakeAuthorizationCode`（`TakePushedAuthorizationRequest` 同理，表为 `pushed_authorization_requests`、键列为 `key`）用单语句 `DELETE FROM authorization_codes WHERE handle = $1 RETURNING payload` 完成定位、删除与返回，不开显式事务、不先 SELECT 再 DELETE；0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一句柄只有一个成功。DELETE 已提交后 payload 解码失败时返回包装后的解码错误（不是 `ErrNotFound`），码不恢复；ctx 取消或连接中断等传输失败同理——任何非 `ErrNotFound` 错误都可能意味着码已被消费，此时重试会得到 `ErrNotFound`。
+- **原子取出（AD-12）**：`TakeAuthorizationCode` 用单语句 `DELETE FROM authorization_codes WHERE handle = $1 RETURNING payload` 完成定位、删除与返回，不开显式事务、不先 SELECT 再 DELETE；0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一句柄只有一个成功。DELETE 已提交后 payload 解码失败时返回包装后的解码错误（不是 `ErrNotFound`），码不恢复；ctx 取消或连接中断等传输失败同理——任何非 `ErrNotFound` 错误都可能意味着码已被消费，此时重试会得到 `ErrNotFound`。
+- **PAR 原子取出（AD-12）**：`TakePushedAuthorizationRequest` 用单语句 `DELETE FROM pushed_authorization_requests WHERE key = $1 RETURNING payload`，其余语义同上：0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一键只有一个成功；DELETE 已提交后的解码或传输错误都可能意味着请求已被消费，请求不恢复。
 - **按条件移除（AD-13）**：8 个 `Remove*ByClient` / `*BySession` 方法在参数为空串时直接返回 `(0, nil)`、不发 SQL（`user_consents.client_id` 为 `NOT NULL` 列，空 ClientId 以空串存储，空参数若下发会误删）；否则执行单语句 `DELETE ... WHERE <定位列> = $1`，返回 `RowsAffected`，零匹配返回 `(0, nil)`。定位列由迁移 000004 增加并回填存量行，见 [schema-design-record.md](./schema-design-record.md) 例外 7、8。`PersistedGrantStore` 无新增方法，按 client / session 移除沿用 `RemoveAll` 过滤。
 
 ## 五、合规凭证（宿主装配期校验）

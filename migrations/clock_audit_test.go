@@ -92,10 +92,18 @@ func TestClockAuditStoreCleanupSQL(t *testing.T) {
 		// statement cannot slip through.
 		grantShape := regexp.MustCompile(`"DELETE FROM \w+ WHERE expires_at IS NOT NULL AND expires_at < \$1"`)
 		sessionShape := regexp.MustCompile(`"DELETE FROM \w+ WHERE expires IS NOT NULL AND expires < \$1"`)
+		// The retention shape is accepted only in the pushed authorization
+		// request store; every other file must use the grant or session shape.
 		retentionShape := regexp.MustCompile(`"DELETE FROM pushed_authorization_requests WHERE retention_expiration < \$1"`)
-		if !grantShape.MatchString(src) && !sessionShape.MatchString(src) && !retentionShape.MatchString(src) {
+		if filepath.Base(file) == "pushed_authorization_request.go" {
+			if !retentionShape.MatchString(src) {
+				t.Errorf("%s: cleanup statement is not the retention shape "+
+					`"DELETE FROM pushed_authorization_requests WHERE retention_expiration < $1"`, file)
+			}
+		} else if !grantShape.MatchString(src) && !sessionShape.MatchString(src) {
 			t.Errorf("%s: cleanup statement is not the unified shape "+
-				`"DELETE FROM <table> WHERE expires_at IS NOT NULL AND expires_at < $1"`, file)
+				`"DELETE FROM <table> WHERE expires_at IS NOT NULL AND expires_at < $1"`+
+				` (session store: expires column)`, file)
 		}
 		// No variant may appear: no <=, no bare WHERE without the guard,
 		// no hardcoded timestamp, no INTERVAL arithmetic. Clock tokens
