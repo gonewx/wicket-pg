@@ -68,7 +68,7 @@
 | `idx_reference_tokens_client_id` | `reference_tokens (client_id)`（迁移 000004 增，可空列） | `RemoveReferenceTokensByClient`（端口 `storage.ReferenceTokenStore`，wicket v0.5.0/v0.8.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE client_id = $1` | 批量移除路径 |
 | `idx_reference_tokens_session_id` | `reference_tokens (session_id)`（迁移 000004 增，可空列） | `RemoveReferenceTokensBySession`（端口 `storage.ReferenceTokenStore`，wicket v0.5.0/v0.8.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
 | `idx_device_codes_session_id` | `device_codes (session_id)`（迁移 000004 增，可空列） | `RemoveDeviceCodesBySession`（端口 `storage.DeviceFlowStore`，wicket v0.5.0/v0.8.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
-| `idx_user_consents_client_id` | `user_consents (client_id)`（迁移 000004 增，可空列） | `RemoveUserConsentsByClient`（端口 `storage.UserConsentStore`，wicket v0.5.0/v0.8.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE client_id = $1` | 批量移除路径 |
+| `idx_user_consents_client_id` | `user_consents (client_id)`（迁移 000004 增索引；列为 000001 既有的 `NOT NULL` 列） | `RemoveUserConsentsByClient`（端口 `storage.UserConsentStore`，wicket v0.5.0/v0.8.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE client_id = $1` | 批量移除路径 |
 
 ### 复合主键与单列主键（非显式索引名，同样指名）
 
@@ -85,7 +85,7 @@
 4. **`sessions.expires` 列名例外**：清理列是 `expires` 不是 `expires_at`（`store/session.go` `DeleteExpired`）——统一清理形态中「session 为 `expires` 列」的特例（AD-5）。
 5. **`device_codes.user_code` 唯一索引双职责**：既支撑 `FindByUserCode`/`UpdateByUserCode` 读路径，又承担 insert-only 的重复拒绝（SQLSTATE 23505 → `storage.ErrDuplicateHandle`）——索引条目须同时指名两类路径。
 6. **`user_consents` 无独立 subject 索引**：`GetAllUserConsents` 走复合 PK 的前缀匹配，无需额外索引——反向核对时不要误报「缺索引」。
-7. **按条件移除的定位列（000004）**：`authorization_codes` / `refresh_tokens` / `reference_tokens` 落 `client_id` + `session_id`，`device_codes` 只落 `session_id`（设备流端口无按 client 移除，AD-4 真实列最小集），`user_consents` 已有 `client_id` 列但复合 PK 前导列为 `subject_id`，故为按 client 移除单建索引。值在写入时取自模型（引用令牌的 session 取 `Token.SessionId()`，即恰好一个字符串型 `sid` claim），`UpdateRefreshToken` / `UpdateByUserCode` 同语句刷新，不残留陈旧值。**空值存 NULL**（沿例外 3 的 `sessions.subject_id` 先例）：NULL 不参与等值匹配，按空参数移除永不命中无 client / session 的记录。存量行由 000004 在同一迁移事务内从 payload 容器解码回填，回填语义与 Go 侧逐条一致（`tests/e2e/scoped_removal_columns_e2e_test.go` 直接列断言）。
+7. **按条件移除的定位列（000004）**：`authorization_codes` / `refresh_tokens` / `reference_tokens` 落 `client_id` + `session_id`，`device_codes` 只落 `session_id`（设备流端口无按 client 移除，AD-4 真实列最小集），`user_consents` 已有 `client_id` 列但复合 PK 前导列为 `subject_id`，故为按 client 移除单建索引。值在写入时取自模型（引用令牌的 session 取 `Token.SessionId()`，即 `Type` 为 `sid` 的 claim 恰好一个、且其值为字符串时取该值；多于一个——不论值类型——或唯一一个不是字符串时为空），`UpdateRefreshToken` / `UpdateByUserCode` 同语句刷新，不残留陈旧值。**空值存 NULL**（沿例外 3 的 `sessions.subject_id` 先例）：NULL 不参与等值匹配，按空参数移除永不命中无 client / session 的记录。存量行由 000004 在同一迁移事务内从 payload 容器解码回填，回填语义与 Go 侧逐条一致（`tests/e2e/scoped_removal_columns_e2e_test.go` 直接列断言）。**部署顺序：执行 000004 之前须停掉所有旧版本写入方**——迁移后旧二进制的 INSERT 会留下 NULL 定位列、旧二进制的 `UpdateRefreshToken` / `UpdateByUserCode` 会留下陈旧值，回填只在迁移事务内执行一次，事后不会补齐，按条件移除会漏删这些行。
 8. **4.1 → 4.2 过渡期**：8 个定位列索引支撑的按条件移除方法由 Story 4.2（随 wicket v0.8.0 升级原子落地）实现；在此之前索引条目只写端口方法名，不加 store 类型名与点号前缀（静态盘点 `TestSchemaRecordStoreMethods` 只核对「store 类型名 + 点号 + 方法名」形式的引用，故不会把它们当作已实现方法核对）。4.2 完成时须把这些条目改为「store 类型名 + 点号 + 方法名」的完整引用（如本表其他条目），交由盘点测试强制核对。两 story 之间不发版（v0.2.0 在 Story 4.5），过渡期不对外暴露。
 
 ---

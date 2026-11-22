@@ -92,6 +92,13 @@ func TestE2EScopedRemovalColumnsWritePaths(t *testing.T) {
 	c, s = locatorColumns(t, pool, "authorization_codes", "client_id", "code-nosess")
 	assertLocator(t, "authorization_codes code-nosess client_id", c, "client-b")
 	assertLocator(t, "authorization_codes code-nosess session_id", s, "")
+	if err := codes.StoreAuthorizationCode(ctx, "code-noclient", &models.AuthorizationCode{
+		SessionId: "sess-c", CreationTime: fixedNow, Lifetime: 300}); err != nil {
+		t.Fatalf("StoreAuthorizationCode: %v", err)
+	}
+	c, s = locatorColumns(t, pool, "authorization_codes", "client_id", "code-noclient")
+	assertLocator(t, "authorization_codes code-noclient client_id", c, "")
+	assertLocator(t, "authorization_codes code-noclient session_id", s, "sess-c")
 
 	refresh := store.NewRefreshTokenStore(pool, discardLogger())
 	if err := refresh.StoreRefreshToken(ctx, "rt-sess", &models.RefreshToken{
@@ -101,6 +108,13 @@ func TestE2EScopedRemovalColumnsWritePaths(t *testing.T) {
 	c, s = locatorColumns(t, pool, "refresh_tokens", "client_id", "rt-sess")
 	assertLocator(t, "refresh_tokens rt-sess client_id", c, "client-a")
 	assertLocator(t, "refresh_tokens rt-sess session_id", s, "sess-a")
+	if err := refresh.StoreRefreshToken(ctx, "rt-noloc", &models.RefreshToken{
+		CreationTime: fixedNow, Lifetime: 300}); err != nil {
+		t.Fatalf("StoreRefreshToken: %v", err)
+	}
+	c, s = locatorColumns(t, pool, "refresh_tokens", "client_id", "rt-noloc")
+	assertLocator(t, "refresh_tokens rt-noloc client_id", c, "")
+	assertLocator(t, "refresh_tokens rt-noloc session_id", s, "")
 
 	refs := store.NewReferenceTokenStore(pool, discardLogger())
 	if err := refs.StoreReferenceToken(ctx, "ref-sess",
@@ -117,6 +131,13 @@ func TestE2EScopedRemovalColumnsWritePaths(t *testing.T) {
 	c, s = locatorColumns(t, pool, "reference_tokens", "client_id", "ref-nosess")
 	assertLocator(t, "reference_tokens ref-nosess client_id", c, "client-b")
 	assertLocator(t, "reference_tokens ref-nosess session_id", s, "")
+	if err := refs.StoreReferenceToken(ctx, "ref-noclient",
+		referenceToken("", claim("sid", "sess-c"))); err != nil {
+		t.Fatalf("StoreReferenceToken: %v", err)
+	}
+	c, s = locatorColumns(t, pool, "reference_tokens", "client_id", "ref-noclient")
+	assertLocator(t, "reference_tokens ref-noclient client_id", c, "")
+	assertLocator(t, "reference_tokens ref-noclient session_id", s, "sess-c")
 
 	devices := store.NewDeviceFlowStore(pool, discardLogger())
 	if err := devices.StoreDeviceAuthorization(ctx, "device-sess", "user-sess", &models.DeviceCode{
@@ -189,6 +210,16 @@ func TestE2EScopedRemovalColumnsRefreshUpdateFollowsModel(t *testing.T) {
 	c, s = locatorColumns(t, pool, "refresh_tokens", "client_id", "rt-1")
 	assertLocator(t, "refresh_tokens client_id after conflict", c, "client-b")
 	assertLocator(t, "refresh_tokens session_id after conflict", s, "sess-b")
+
+	// Clearing the client and session in the model must clear the columns
+	// to NULL, not leave the previous values or store empty strings.
+	cleared := &models.RefreshToken{CreationTime: fixedNow, Lifetime: 300}
+	if err := refresh.UpdateRefreshToken(ctx, "rt-1", cleared, 2); err != nil {
+		t.Fatalf("UpdateRefreshToken clearing locators: %v", err)
+	}
+	c, s = locatorColumns(t, pool, "refresh_tokens", "client_id", "rt-1")
+	assertLocator(t, "refresh_tokens client_id after clearing", c, "")
+	assertLocator(t, "refresh_tokens session_id after clearing", s, "")
 }
 
 // TestE2EScopedRemovalColumnsBackfillExistingRows simulates a database that
@@ -221,6 +252,19 @@ func TestE2EScopedRemovalColumnsBackfillExistingRows(t *testing.T) {
 		ClientId: "client-b", CreationTime: fixedNow, Lifetime: 300}))
 	mustNil("store rt-sess", refresh.StoreRefreshToken(ctx, "rt-sess", &models.RefreshToken{
 		ClientId: "client-a", SessionId: "sess-a", CreationTime: fixedNow, Lifetime: 300}))
+	mustNil("store code-noclient", codes.StoreAuthorizationCode(ctx, "code-noclient", &models.AuthorizationCode{
+		SessionId: "sess-c", CreationTime: fixedNow, Lifetime: 300}))
+	mustNil("store rt-noloc", refresh.StoreRefreshToken(ctx, "rt-noloc", &models.RefreshToken{
+		CreationTime: fixedNow, Lifetime: 300}))
+	mustNil("store ref-noclient", refs.StoreReferenceToken(ctx, "ref-noclient",
+		referenceToken("", claim("sid", "sess-c"))))
+	// A sid claim whose value is not a string still counts towards the
+	// single-sid rule on the Go side: next to a string sid it makes the
+	// session empty, and on its own it yields an empty session too.
+	mustNil("store ref-mixed-sid", refs.StoreReferenceToken(ctx, "ref-mixed-sid",
+		referenceToken("client-e", claim("sid", "sess-e"), &claims.Claim{Type: "sid", Value: 7.0})))
+	mustNil("store ref-nonstring-sid", refs.StoreReferenceToken(ctx, "ref-nonstring-sid",
+		referenceToken("client-f", &claims.Claim{Type: "sid", Value: 7.0})))
 	mustNil("store ref-one-sid", refs.StoreReferenceToken(ctx, "ref-one-sid",
 		referenceToken("client-a", claim("sub", "user-1"), claim("sid", "sess-a"))))
 	mustNil("store ref-no-sid", refs.StoreReferenceToken(ctx, "ref-no-sid",
@@ -254,7 +298,7 @@ func TestE2EScopedRemovalColumnsBackfillExistingRows(t *testing.T) {
 		t.Fatalf("Up after revert: %v", err)
 	}
 
-	for _, handle := range []string{"code-sess", "code-nosess"} {
+	for _, handle := range []string{"code-sess", "code-nosess", "code-noclient"} {
 		code, err := codes.GetAuthorizationCode(ctx, handle)
 		mustNil("get "+handle, err)
 		c, s := locatorColumns(t, pool, "authorization_codes", "client_id", handle)
@@ -262,17 +306,22 @@ func TestE2EScopedRemovalColumnsBackfillExistingRows(t *testing.T) {
 		assertLocator(t, "backfilled authorization_codes "+handle+" session_id", s, code.SessionId)
 	}
 
-	token, err := refresh.GetRefreshToken(ctx, "rt-sess")
-	mustNil("get rt-sess", err)
-	c, s := locatorColumns(t, pool, "refresh_tokens", "client_id", "rt-sess")
-	assertLocator(t, "backfilled refresh_tokens client_id", c, token.ClientId)
-	assertLocator(t, "backfilled refresh_tokens session_id", s, token.SessionId)
+	for _, handle := range []string{"rt-sess", "rt-noloc"} {
+		token, err := refresh.GetRefreshToken(ctx, handle)
+		mustNil("get "+handle, err)
+		c, s := locatorColumns(t, pool, "refresh_tokens", "client_id", handle)
+		assertLocator(t, "backfilled refresh_tokens "+handle+" client_id", c, token.ClientId)
+		assertLocator(t, "backfilled refresh_tokens "+handle+" session_id", s, token.SessionId)
+	}
 
 	wantRefSession := map[string]string{
-		"ref-one-sid":    "sess-a",
-		"ref-no-sid":     "",
-		"ref-two-sid":    "",
-		"ref-nil-claims": "",
+		"ref-one-sid":       "sess-a",
+		"ref-no-sid":        "",
+		"ref-two-sid":       "",
+		"ref-nil-claims":    "",
+		"ref-noclient":      "sess-c",
+		"ref-mixed-sid":     "",
+		"ref-nonstring-sid": "",
 	}
 	for handle, want := range wantRefSession {
 		ref, err := refs.GetReferenceToken(ctx, handle)

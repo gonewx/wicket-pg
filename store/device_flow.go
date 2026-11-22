@@ -95,9 +95,9 @@ func (s *DeviceFlowStore) FindByUserCode(ctx context.Context, userCode string) (
 
 // UpdateByUserCode replaces the payload, the derived expires_at and the
 // session_id locator column for the record under user code — the approval
-// writes the session here, so the column must follow it. The write is a state-migration replacement, not a
-// version-guarded update; updating a user code that is not present succeeds
-// as a no-op.
+// writes the session here, so the column must follow it. The write is a
+// state-migration replacement, not a version-guarded update; updating a user
+// code that is not present succeeds as a no-op.
 func (s *DeviceFlowStore) UpdateByUserCode(ctx context.Context, userCode string, data *models.DeviceCode) error {
 	payload, err := s.codec.encode(data)
 	if err != nil {

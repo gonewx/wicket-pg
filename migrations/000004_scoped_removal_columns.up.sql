@@ -18,13 +18,27 @@
 -- Existing rows are backfilled in this same transaction from the payload
 -- container {"version":1,"dataProtected":false,"payload":"<base64>"}; the
 -- decoded model JSON keys are the Go field names. A reference token gets a
--- session only when exactly one string-valued sid claim is present, the same
--- result Token.SessionId() returns. Indexes are built after the backfill.
+-- session only when exactly one claim of type sid is present and its value is
+-- a string: more than one sid claim, whatever their value types, or a single
+-- non-string one yields NULL, the same result Token.SessionId() returns.
+-- Indexes are built after the backfill.
 --
--- Operational note: the backfill rewrites every row of four tables inside one
--- transaction; on large tables run Up in a maintenance window, or reclaim
--- expired records with RemoveExpired first. DDL stays relative to the
--- connection's current search_path like 000001.
+-- Operational notes:
+--   * The backfill rewrites every row of four tables inside one transaction;
+--     on large tables run Up in a maintenance window, or reclaim expired
+--     records with RemoveExpired first.
+--   * Stop every writer running a pre-000004 build before running Up. After
+--     Up, an old build's inserts leave the locator columns NULL and its
+--     UpdateRefreshToken / UpdateByUserCode leave stale values; the backfill
+--     runs once, inside this transaction, and never revisits those rows.
+--   * A payload whose model JSON holds the escape \u0000 (a NUL character in
+--     any string field) cannot be cast to jsonb, so Up fails with
+--     "unsupported Unicode escape sequence" and the whole transaction rolls
+--     back, leaving 000003 intact. Remove the offending records by handle,
+--     or let them expire and reclaim them with RemoveExpired, then run Up
+--     again.
+--   * DDL stays relative to the connection's current search_path like
+--     000001.
 
 ALTER TABLE authorization_codes ADD COLUMN client_id text;
 ALTER TABLE authorization_codes ADD COLUMN session_id text;
@@ -52,10 +66,12 @@ WHERE refresh_tokens.handle = d.h;
 
 UPDATE reference_tokens SET
     client_id  = NULLIF(d.m->>'ClientId', ''),
-    session_id = (SELECT CASE WHEN count(*) = 1 THEN NULLIF(min(c->>'Value'), '') END
+    session_id = (SELECT CASE WHEN count(*) = 1 THEN
+                             NULLIF(min(c->>'Value') FILTER (WHERE jsonb_typeof(c->'Value') = 'string'), '')
+                         END
                   FROM jsonb_array_elements(
                            COALESCE(NULLIF(d.m->'Claims', 'null'::jsonb), '[]'::jsonb)) c
-                  WHERE c->>'Type' = 'sid' AND jsonb_typeof(c->'Value') = 'string')
+                  WHERE c->>'Type' = 'sid')
 FROM (SELECT handle AS h,
              convert_from(decode(payload->>'payload', 'base64'), 'UTF8')::jsonb AS m
       FROM reference_tokens) d
