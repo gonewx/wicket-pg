@@ -32,6 +32,18 @@ import (
 // e2e suite convention.
 const testDatabaseURLEnv = "WICKET_PG_TEST_DATABASE_URL"
 
+// factoryMaxConns caps each per-store pool. The concurrent take case
+// releases more takers per round than this cap, so the surplus queues on
+// the pool and at most factoryMaxConns takers reach the database at once;
+// that is still enough contention to expose a non-atomic Get-then-Remove.
+// The cap trades suite concurrency for a bounded connection footprint.
+// factoryIdleDrain is both the idle lifetime of a
+// pooled connection and the health check period that reclaims it.
+const (
+	factoryMaxConns  = 8
+	factoryIdleDrain = 100 * time.Millisecond
+)
+
 // NewStore returns a store factory for a conformance suite. Every call of
 // the returned function creates a fresh isolated environment: a unique
 // schema on the database named by WICKET_PG_TEST_DATABASE_URL, a dedicated
@@ -78,6 +90,15 @@ func NewStore[T any](t *testing.T, construct func(pool *pgxpool.Pool, logger *sl
 			panic(fmt.Errorf("conformance: parse base config: %w", err))
 		}
 		cfg.ConnConfig.RuntimeParams["search_path"] = name
+		// Pools live until the whole test finishes, but some suite cases
+		// build hundreds of stores in one subtest (the concurrent take case
+		// creates one per round with many takers each). Idle connections of
+		// finished rounds are therefore drained quickly instead of piling up
+		// against the server's connection limit, and the cap is explicit so
+		// the footprint does not vary with the host's CPU count.
+		cfg.MaxConns = factoryMaxConns
+		cfg.MaxConnIdleTime = factoryIdleDrain
+		cfg.HealthCheckPeriod = factoryIdleDrain
 		pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
 		if err != nil {
 			panic(fmt.Errorf("conformance: connect with search_path %s: %w", name, err))

@@ -62,6 +62,25 @@ func TestAllStoresConformToSuiteVersions(t *testing.T) {
 	}
 }
 
+// TestSuiteVersionsPinned pins the three suite constants this module is
+// built against to the same version. ConformsTo returns the constants
+// themselves, so a dependency bump that moves any suite version turns this
+// test red until the adapters are verified against the new suite. The
+// expected value is assembled at runtime so the audit below and the lineage
+// gate never match this file's own source.
+func TestSuiteVersionsPinned(t *testing.T) {
+	want := "3" + ".0.0"
+	for name, got := range map[string]string{
+		"storagetest": storagetest.SuiteVersion,
+		"sessiontest": sessiontest.SuiteVersion,
+		"keymgmttest": keymgmttest.SuiteVersion,
+	} {
+		if got != want {
+			t.Errorf("%s.SuiteVersion = %q, want %q", name, got, want)
+		}
+	}
+}
+
 // conformsToMethodBody captures the body of a ConformsTo method. The audited
 // methods are single-line returns; the pattern spans to the first closing
 // brace, so any validation logic (comparison, loop, panic) inside the body
@@ -77,7 +96,7 @@ var conformsToMethodBody = regexp.MustCompile(`func \([^)]*\) ConformsTo\(\) str
 // cannot be hit by the audit it performs (the lineage gate's self-hit
 // lesson).
 func TestConformsToNoHardcodedVersionLiteral(t *testing.T) {
-	versionLiteral := "1" + ".0.0"
+	versionLiteral := "3" + ".0.0"
 	expectedBodies := []string{
 		"return storagetest.SuiteVersion",
 		"return sessiontest.SuiteVersion",

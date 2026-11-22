@@ -117,6 +117,26 @@ func (s *UserConsentStore) RemoveUserConsent(ctx context.Context, subjectId, cli
 	return nil
 }
 
+// RemoveUserConsentsByClient deletes every consent whose ClientId equals
+// clientId in one DELETE on user_consents.client_id and returns how many rows
+// were removed. Zero matches return (0, nil). An empty clientId returns
+// (0, nil) without issuing SQL: client_id is NOT NULL and a consent with an
+// empty ClientId is stored as the empty string, so this short circuit is what
+// keeps such consents from being selected.
+func (s *UserConsentStore) RemoveUserConsentsByClient(ctx context.Context, clientId string) (int, error) {
+	if clientId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM user_consents WHERE client_id = $1", clientId)
+	if err != nil {
+		return 0, fmt.Errorf("remove user consents by client: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("user consents removed by client", "client_prefix", handlePrefix(clientId), "count", n)
+	return n, nil
+}
+
 // RemoveExpired deletes consents whose stored expiry precedes cutoff,
 // strictly (a record with expires_at == cutoff is kept), and returns how
 // many were removed. Records with NULL expires_at (never expiring) are left

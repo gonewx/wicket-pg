@@ -2,16 +2,15 @@ module github.com/gonewx/wicket-pg
 
 go 1.27
 
-// This module requires the published wicket module at v0.1.4 — the newest
-// v0.1.x at release time, per this repo's release discipline. v0.1.3 was the
-// first release whose ClaimsIdentity JSON round trip is lossless (v0.1.2's
-// plain encoding/json codec silently dropped stored subject claims); v0.1.4
-// carries no production code changes on top of it, only a toolchain pin bump
-// to the Go 1.27.0 release and doc updates. Port sentinel errors and suite
-// entry points are imported from wicket; this module never redefines them.
+// This module requires the published wicket module at v0.8.0 — the newest
+// released version at release time, per this repo's release discipline. All
+// three contract suites it ships (storagetest, sessiontest, keymgmttest)
+// report SuiteVersion 3.0.0, and every store's ConformsTo returns those
+// constants. Port sentinel errors and suite entry points are imported from
+// wicket; this module never redefines them.
 
 require (
-	github.com/gonewx/wicket v0.1.4
+	github.com/gonewx/wicket v0.8.0
 	github.com/jackc/pgx/v5 v5.10.0
 	gopkg.in/yaml.v3 v3.0.1
 )

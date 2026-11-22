@@ -91,6 +91,45 @@ func TestE2EAllStoresConformToSuiteVersions(t *testing.T) {
 	}
 }
 
+// TestE2ESuiteVersionsPinned pins, at the assembled-host layer, the version
+// every store reports: all nine stores built on one migrated schema report
+// the same suite version, and that version is the one this module is
+// verified against. The expected value is assembled at runtime so no audit
+// or lineage gate can match this file's own source.
+func TestE2ESuiteVersionsPinned(t *testing.T) {
+	pool := newScratchPool(t)
+	if err := migrations.Up(t.Context(), pool); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	want := "3" + ".0.0"
+	creds := map[string]interface{ ConformsTo() string }{
+		"AuthorizationCodeStore":                store.NewAuthorizationCodeStore(pool, discardLogger()),
+		"RefreshTokenStore":                     store.NewRefreshTokenStore(pool, discardLogger()),
+		"ReferenceTokenStore":                   store.NewReferenceTokenStore(pool, discardLogger()),
+		"UserConsentStore":                      store.NewUserConsentStore(pool, discardLogger()),
+		"PersistedGrantStore":                   store.NewPersistedGrantStore(pool, discardLogger()),
+		"DeviceFlowStore":                       store.NewDeviceFlowStore(pool, discardLogger()),
+		"BackchannelAuthenticationRequestStore": store.NewBackchannelAuthenticationRequestStore(pool, discardLogger()),
+		"SessionStore":                          store.NewSessionStore(pool, discardLogger()),
+		"KeyRecordStore":                        store.NewKeyRecordStore(pool, discardLogger()),
+	}
+	for name, cred := range creds {
+		if got := cred.ConformsTo(); got != want {
+			t.Errorf("%s.ConformsTo() = %q, want %q", name, got, want)
+		}
+	}
+	for name, got := range map[string]string{
+		"storagetest": storagetest.SuiteVersion,
+		"sessiontest": sessiontest.SuiteVersion,
+		"keymgmttest": keymgmttest.SuiteVersion,
+	} {
+		if got != want {
+			t.Errorf("%s.SuiteVersion = %q, want %q", name, got, want)
+		}
+	}
+}
+
 // TestE2EConformsToNeedsNoLogger pins the logger contract at the assembly
 // layer: stores accept a nil logger and ConformsTo still returns the suite
 // version without panicking — a host that wires the credential check before

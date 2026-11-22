@@ -83,6 +83,68 @@ func (s *AuthorizationCodeStore) RemoveAuthorizationCode(ctx context.Context, ha
 	return nil
 }
 
+// TakeAuthorizationCode atomically removes the code stored under handle and
+// returns an independent copy of it, in a single DELETE ... RETURNING
+// statement with no explicit transaction. A miss (absent or already taken)
+// fails with storage.ErrNotFound, so of any number of concurrent takes of the
+// same handle exactly one succeeds. Expiry is not judged: an expired code is
+// taken like any other. If the payload fails to decode after the delete has
+// committed, the row is already removed, the caller gets a wrapped decode
+// error (not storage.ErrNotFound), and the code is not restored: a
+// single-use code is consumed on take.
+func (s *AuthorizationCodeStore) TakeAuthorizationCode(ctx context.Context, handle string) (*models.AuthorizationCode, error) {
+	var payload []byte
+	err := s.pool.QueryRow(ctx,
+		"DELETE FROM authorization_codes WHERE handle = $1 RETURNING payload", handle).Scan(&payload)
+	if err != nil {
+		return nil, mapReadErr(err, storage.ErrNotFound)
+	}
+	code := new(models.AuthorizationCode)
+	if err := s.codec.decode(payload, code); err != nil {
+		return nil, fmt.Errorf("decode taken authorization code payload: %w", err)
+	}
+	s.logger.Debug("authorization code taken", "handle_prefix", handlePrefix(handle))
+	return code, nil
+}
+
+// RemoveAuthorizationCodesByClient deletes every authorization code whose
+// ClientId equals clientId in one DELETE on the authorization_codes.client_id
+// locator column and returns how many rows were removed. Zero matches return
+// (0, nil). An empty clientId returns (0, nil) without issuing SQL, so
+// records without a client are never selected.
+func (s *AuthorizationCodeStore) RemoveAuthorizationCodesByClient(ctx context.Context, clientId string) (int, error) {
+	if clientId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM authorization_codes WHERE client_id = $1", clientId)
+	if err != nil {
+		return 0, fmt.Errorf("remove authorization codes by client: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("authorization codes removed by client", "client_prefix", handlePrefix(clientId), "count", n)
+	return n, nil
+}
+
+// RemoveAuthorizationCodesBySession deletes every authorization code whose
+// SessionId equals sessionId in one DELETE on the
+// authorization_codes.session_id locator column and returns how many rows
+// were removed. Zero matches return (0, nil). An empty sessionId returns (0,
+// nil) without issuing SQL, so records without a session are never selected.
+func (s *AuthorizationCodeStore) RemoveAuthorizationCodesBySession(ctx context.Context, sessionId string) (int, error) {
+	if sessionId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM authorization_codes WHERE session_id = $1", sessionId)
+	if err != nil {
+		return 0, fmt.Errorf("remove authorization codes by session: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("authorization codes removed by session", "session_prefix", handlePrefix(sessionId), "count", n)
+	return n, nil
+}
+
 // RemoveExpired deletes codes whose derived expiry precedes cutoff, strictly
 // (a record with expires_at == cutoff is kept), and returns how many were
 // removed. It reclaims space only; expiry judgement remains on the core

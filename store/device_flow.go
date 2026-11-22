@@ -127,6 +127,27 @@ func (s *DeviceFlowStore) RemoveByDeviceCode(ctx context.Context, deviceCode str
 	return nil
 }
 
+// RemoveDeviceCodesBySession deletes every device code whose SessionId equals
+// sessionId in one DELETE on the device_codes.session_id locator column and
+// returns how many rows were removed. Zero matches return (0, nil). An empty
+// sessionId returns (0, nil) without issuing SQL, so records without a
+// session are never selected. One row carries both the device code and its
+// user code, so each removed authorization record counts once and misses
+// afterwards through both FindByDeviceCode and FindByUserCode.
+func (s *DeviceFlowStore) RemoveDeviceCodesBySession(ctx context.Context, sessionId string) (int, error) {
+	if sessionId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM device_codes WHERE session_id = $1", sessionId)
+	if err != nil {
+		return 0, fmt.Errorf("remove device codes by session: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("device codes removed by session", "session_prefix", handlePrefix(sessionId), "count", n)
+	return n, nil
+}
+
 // RemoveExpired deletes records whose derived expiry precedes cutoff,
 // strictly (a record with expires_at == cutoff is kept), and returns how
 // many were removed. It reclaims space only; expiry judgement remains on

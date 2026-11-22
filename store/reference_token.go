@@ -129,6 +129,46 @@ func (s *ReferenceTokenStore) RemoveReferenceTokens(ctx context.Context, subject
 	return nil
 }
 
+// RemoveReferenceTokensByClient deletes every reference token whose ClientId
+// equals clientId in one DELETE on the reference_tokens.client_id locator
+// column and returns how many rows were removed. Zero matches return (0,
+// nil). An empty clientId returns (0, nil) without issuing SQL, so records
+// without a client are never selected.
+func (s *ReferenceTokenStore) RemoveReferenceTokensByClient(ctx context.Context, clientId string) (int, error) {
+	if clientId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM reference_tokens WHERE client_id = $1", clientId)
+	if err != nil {
+		return 0, fmt.Errorf("remove reference tokens by client: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("reference tokens removed by client", "client_prefix", handlePrefix(clientId), "count", n)
+	return n, nil
+}
+
+// RemoveReferenceTokensBySession deletes every reference token whose
+// SessionId() equals sessionId in one DELETE on the
+// reference_tokens.session_id locator column and returns how many rows were
+// removed. Zero matches return (0, nil). An empty sessionId returns (0, nil)
+// without issuing SQL, so records without a session are never selected. The
+// session_id column holds the token's sid claim, the value Token.SessionId()
+// reports.
+func (s *ReferenceTokenStore) RemoveReferenceTokensBySession(ctx context.Context, sessionId string) (int, error) {
+	if sessionId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM reference_tokens WHERE session_id = $1", sessionId)
+	if err != nil {
+		return 0, fmt.Errorf("remove reference tokens by session: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("reference tokens removed by session", "session_prefix", handlePrefix(sessionId), "count", n)
+	return n, nil
+}
+
 // RemoveExpired deletes tokens whose derived expiry precedes cutoff,
 // strictly (a record with expires_at == cutoff is kept), and returns how
 // many were removed. It reclaims space only; expiry judgement remains on

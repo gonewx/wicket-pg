@@ -130,6 +130,44 @@ func (s *RefreshTokenStore) RemoveRefreshToken(ctx context.Context, handle strin
 	return nil
 }
 
+// RemoveRefreshTokensByClient deletes every refresh token whose ClientId
+// equals clientId in one DELETE on the refresh_tokens.client_id locator
+// column and returns how many rows were removed. Zero matches return (0,
+// nil). An empty clientId returns (0, nil) without issuing SQL, so records
+// without a client are never selected.
+func (s *RefreshTokenStore) RemoveRefreshTokensByClient(ctx context.Context, clientId string) (int, error) {
+	if clientId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM refresh_tokens WHERE client_id = $1", clientId)
+	if err != nil {
+		return 0, fmt.Errorf("remove refresh tokens by client: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("refresh tokens removed by client", "client_prefix", handlePrefix(clientId), "count", n)
+	return n, nil
+}
+
+// RemoveRefreshTokensBySession deletes every refresh token whose SessionId
+// equals sessionId in one DELETE on the refresh_tokens.session_id locator
+// column and returns how many rows were removed. Zero matches return (0,
+// nil). An empty sessionId returns (0, nil) without issuing SQL, so records
+// without a session are never selected.
+func (s *RefreshTokenStore) RemoveRefreshTokensBySession(ctx context.Context, sessionId string) (int, error) {
+	if sessionId == "" {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM refresh_tokens WHERE session_id = $1", sessionId)
+	if err != nil {
+		return 0, fmt.Errorf("remove refresh tokens by session: %w", err)
+	}
+	n := int(tag.RowsAffected())
+	s.logger.Debug("refresh tokens removed by session", "session_prefix", handlePrefix(sessionId), "count", n)
+	return n, nil
+}
+
 // RemoveExpired deletes tokens whose derived expiry precedes cutoff,
 // strictly (a record with expires_at == cutoff is kept), and returns how
 // many were removed. It reclaims space only; expiry judgement remains on
