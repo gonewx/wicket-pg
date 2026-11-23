@@ -53,6 +53,7 @@ wicket-pg/
 │       ├── ci_job_e2e_test.go            # CI 配置静态契约（yaml 解析）
 │       ├── readme_quickstart_e2e_test.go # README 快速开始示例可编译性
 │       ├── scoped_removal_*_e2e_test.go  # 000004 定位列写值/回填与按条件移除效果
+│       ├── online_refresh_removal_e2e_test.go # 在线刷新令牌按 session 移除（缺键遗留行、NUL scope、更新后判定、坏 payload 回滚）
 │       └── {store}_e2e_test.go           # 各 store 语义 e2e
 ├── internal/lineage/            # 预留（空）
 ├── docs/                        # 本知识库（index 见 index.md）

@@ -8,7 +8,7 @@ wicket-pg 是 [wicket](https://github.com/gonewx/wicket)（OAuth 授权服务器
 
 - **独立项目**：自备 LICENSE（MIT）、PROVENANCE（独立创作声明）、血缘门禁、migrations 与 CI；不是 wicket 的子目录。
 - **独立创作**：实现依赖 wicket 的**公开 API 契约**（端口接口、哨兵错误、契约套件），但不复制、不改编其实现；schema 从端口读写模式独立推导，不照搬上游表结构与实体划分。
-- **平级依赖**：通过 `require github.com/gonewx/wicket v0.8.0` 接入，不用 go.work 搭桥。
+- **平级依赖**：通过 `require github.com/gonewx/wicket v0.10.0` 接入，不用 go.work 搭桥。
 
 ## 当前状态
 
@@ -16,17 +16,17 @@ wicket-pg 是 [wicket](https://github.com/gonewx/wicket)（OAuth 授权服务器
 |---|---|
 | 十一个 store 实现 | ✅ 完成（九个 grant 存储族 + 会话 + 密钥记录；第八个 grant 族为 PAR 的 `PushedAuthorizationRequestStore`（迁移 000005），第九个为 DCR 的 `ClientRegistrationStore`（同时实现 `ClientOriginLookup`，迁移 000006），两者自 v0.3.0 起提供） |
 | 迁移入口 | ✅ 完成（`migrations.Up` / `Down`，go:embed SQL，幂等） |
-| 契约套件接入 | ✅ 三组 3.0.0 套件全部 MUST 级用例绿（storagetest / sessiontest / keymgmttest），十一个 `ConformsTo()` 均为 `3.0.0` |
+| 契约套件接入 | ✅ 三组 4.0.0 套件（wicket v0.10.0）全部 MUST 级用例绿（storagetest / sessiontest / keymgmttest），十一个 `ConformsTo()` 均为 `4.0.0` |
 | 血缘门禁 | ✅ 三项全绿，判别力经探针自证 |
 | CI | ✅ 三 job（lineage-gates → build、conformance）合并阻塞；`conformance` 同时跑契约套件与 e2e |
-| 发布 | **`v0.2.0`** 已发布（2026-11-21，wicket v0.8.0 适配版，CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译；发布说明见 `CHANGELOG.md`）；**`v0.2.1`** 已发布（2026-11-21，更正 v0.2.0 升级说明：v0.1.x 签发的刷新令牌须先回填再 `RemoveExpired`，不改代码与 schema；CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译）；**`v0.3.0`** 已发布（2026-11-22，新增 PAR 与 DCR store 及迁移 000005 / 000006，要求 wicket v0.8.0；CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译；发布说明见 `CHANGELOG.md` 的 `[0.3.0]` 段），新安装用 v0.3.0；`v0.1.0`、`v0.1.1`、`v0.1.2`、`v0.1.3` 为 v0.1.x 线（与 wicket v0.1.x 组合时用 v0.1.3；v0.1.0 因分发层分裂不推荐引用） |
+| 发布 | **`v0.2.0`** 已发布（2026-11-21，wicket v0.8.0 适配版，CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译；发布说明见 `CHANGELOG.md`）；**`v0.2.1`** 已发布（2026-11-21，更正 v0.2.0 升级说明：v0.1.x 签发的刷新令牌须先回填再 `RemoveExpired`，不改代码与 schema；CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译）；**`v0.3.0`** 已发布（2026-11-22，新增 PAR 与 DCR store 及迁移 000005 / 000006，要求 wicket v0.8.0；CI 三 job 绿，消费者经默认 GOPROXY 与 `GOTOOLCHAIN=local` 实测可编译；发布说明见 `CHANGELOG.md` 的 `[0.3.0]` 段），**`v0.4.0`** 待发布（wicket v0.10.0 适配版：补齐 `RemoveOnlineRefreshTokensBySession`，套件 4.0.0，无新迁移；发布说明草稿见 `CHANGELOG.md` 的 `[Unreleased]` 段），打 tag 前新安装仍用 v0.3.0；`v0.1.0`、`v0.1.1`、`v0.1.2`、`v0.1.3` 为 v0.1.x 线（与 wicket v0.1.x 组合时用 v0.1.3；v0.1.0 因分发层分裂不推荐引用） |
 
 ## 技术栈
 
 | 类别 | 技术 | 版本 | 说明 |
 |---|---|---|---|
 | 语言 | Go | `1.27`（CI pin `1.27.0`） | directive 是对下游的语言版本承诺（不带补丁号），CI pin 是本仓构建环境（取精确补丁版）；rc 已于 Go 1.27.0 发布后去除，v0.1.3 起 tag 不携带 rc directive |
-| 核心依赖 | wicket | v0.8.0 | 端口接口、哨兵错误、契约套件入口（`SuiteVersion` 3.0.0），只读依赖 |
+| 核心依赖 | wicket | v0.10.0 | 端口接口、哨兵错误、契约套件入口（`SuiteVersion` 4.0.0），只读依赖 |
 | 数据库驱动 | pgx/v5 | v5.10.0 | 原生 `pgxpool.Pool` 接口，不经 `database/sql` |
 | 测试依赖 | yaml.v3 | v3.0.1 | 仅 `tests/e2e/ci_job_e2e_test.go`（CI 配置静态断言） |
 | 数据库 | PostgreSQL | 15+ | CI 用 `postgres:15` service 容器 |

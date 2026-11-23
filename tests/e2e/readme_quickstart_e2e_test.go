@@ -28,13 +28,13 @@ import (
 
 const readmePath = "README.md"
 
-// wantReleaseVersion is the release this README documents: v0.3.0, which
-// adds the pushed authorization request and client registration stores
-// (migrations 000005 and 000006) and still requires wicket v0.8.0 (suite
-// version 3.0.0). v0.2.0 was the first release for wicket v0.8.0 and v0.2.1
-// corrected its upgrade notes on refresh tokens. Hosts still on wicket
-// v0.1.x keep v0.1.3, which the upgrade section names separately.
-const wantReleaseVersion = "v0.3.0"
+// wantReleaseVersion is the release this README documents: v0.4.0, which
+// requires wicket v0.10.0 (suite version 4.0.0) and implements the refresh
+// token port's RemoveOnlineRefreshTokensBySession; it adds no store and no
+// migration. v0.3.0 is the last release for wicket v0.8.0 and v0.2.0 was the
+// first. Hosts still on wicket v0.1.x keep v0.1.3, which the upgrade section
+// names separately.
+const wantReleaseVersion = "v0.4.0"
 
 // TestE2EReadmeInstallCommandPinsRealModule verifies AC-1: the install
 // command uses the GOWORK=off form (the external workspace would otherwise
@@ -85,7 +85,7 @@ func TestE2EReadmeInstallCommandPinsRealModule(t *testing.T) {
 // 000004 (the removal-by-client and removal-by-session methods query the
 // locator columns it adds and backfills), never back out with
 // migrations.Down (it drops every table), stay on v0.1.3 while wicket v0.1.x
-// is in use (v0.2.x raises the host's wicket requirement to v0.8.0), and
+// is in use (v0.2.x and later raise the host's wicket requirement), and
 // backfill refresh tokens issued by wicket v0.1.x before calling
 // RemoveExpired on them (their derived expiry is in year 1, so the first
 // RemoveExpired would delete every one of them).

@@ -6,11 +6,11 @@
 
 ```mermaid
 flowchart LR
-    subgraph wicket["wicket（端口定义方，只读依赖 v0.8.0）"]
+    subgraph wicket["wicket（端口定义方，只读依赖 v0.10.0）"]
         P1["storage 端口族<br/>AuthorizationCodeStore 等九口<br/>+ ClientOriginLookup"]
         P2["session.Store"]
         P3["keymgmt.RecordStore"]
-        S["契约套件 3.0.0<br/>storagetest / sessiontest / keymgmttest"]
+        S["契约套件 4.0.0<br/>storagetest / sessiontest / keymgmttest"]
         E["哨兵错误<br/>ErrNotFound 等"]
     end
 
@@ -49,7 +49,7 @@ flowchart LR
 |---|---|---|
 | 驱动 | `pgx/v5` 原生接口（`pgxpool.Pool`） | 不经 `database/sql` 抽象层（spec 决策） |
 | 序列化 | 版本容器单列 `payload jsonb`（`{"version":1,"dataProtected":false,"payload":"<base64>"}`） | model 演进时 schema 不必跟着动；`store/codec.go` |
-| 真实列 | 只落查询路径与守卫所需最小集 | 句柄主键、subject/client/type 过滤列、按条件移除的 `client_id` / `session_id` 定位列（000004）、生命周期列、版本守卫列、keymgmt 唯一性列；其余进 payload。例外：PAR 表的可见列只写不读（000005）；DCR 表的可见列只写不读、revision 以列为准（000006） |
+| 真实列 | 只落查询路径与守卫所需最小集 | 句柄主键、subject/client/type 过滤列、按条件移除的 `client_id` / `session_id` 定位列（000004）、生命周期列、版本守卫列、keymgmt 唯一性列；其余进 payload。例外：PAR 表的可见列只写不读（000005）；DCR 表的可见列只写不读、revision 以列为准（000006）；在线刷新令牌按 session 移除以 `session_id` 定位、事务内锁行后在 Go 侧解码 payload 判定 `offline_access`，不落 scope 列（见 schema 设计记录例外 11） |
 | 迁移 | go:embed SQL + 自研幂等记账 `schema_migrations` | 不引入外部迁移库、不依赖宿主装 CLI；文件名沿 golang-migrate 惯例便于未来换工具 |
 | 过期判定 | **禁止** SQL 内 `expires_at > now()` | 适配器用数据库时钟、核心用注入 Clock，集群时钟漂移下结论分裂；清理入口只回收空间 |
 | 清理形态 | 显式入口 `RemoveExpired(ctx, cutoff time.Time) (int, error)` | 调用方驱动的一次性回收、返回计数；不起后台 goroutine |
@@ -146,7 +146,7 @@ flowchart LR
 
 - **血缘门禁**：原创作权（文件头）、零上游血缘标注、中性提交信息——先跑并 gate 住一切构建。
 - **契约套件**：十一个入口分别调用 wicket 三套件；工厂每次调用创建全新空 store（隔离 schema + 专属 pool），并行子测试互不污染；MUST 全绿，MAY 级逐条留档。
-- **合规凭证**：每个 store 暴露 `ConformsTo() string`，返回所属套件的 `SuiteVersion` 常量（grant 族 → `storagetest`，session → `sessiontest`，keymgmt → `keymgmttest`）；wicket v0.8.0 下十一个均为 `3.0.0`。
+- **合规凭证**：每个 store 暴露 `ConformsTo() string`，返回所属套件的 `SuiteVersion` 常量（grant 族 → `storagetest`，session → `sessiontest`，keymgmt → `keymgmttest`）；wicket v0.10.0 下十一个均为 `4.0.0`。
 
 ## 七、关键不变量（改动红线）
 
@@ -164,5 +164,5 @@ flowchart LR
 
 ## 八、依赖与演进
 
-- 依赖树全部是已发布版本（wicket v0.8.0、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
+- 依赖树全部是已发布版本（wicket v0.10.0、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
 - 已识别风险（deferred-work 留档）：并发 `Up` 无 advisory lock（多实例并发启动 PK 冲突）；`schema_migrations` 表名与 golang-migrate 默认表同名冲突。`go 1.27rc1` directive 对 dependabot/gopls 的生态摩擦已消除（Go 1.27.0 发布后两处去 rc，2026-08-21）。

@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file; releases before
 
 ## [Unreleased]
 
+Planned as 0.4.0. This release targets wicket v0.10.0 and requires it; hosts that stay on wicket v0.8.0 keep using 0.3.0. It adds no store and no migration, and the schema is unchanged; the go directive stays `go 1.27`.
+
+### Upgrading from 0.3.x
+
+- **Upgrading raises the host's wicket requirement to v0.10.0.** wicket v0.10.0 adds a method to `storage.RefreshTokenStore`, so 0.3.0 cannot be combined with it and this release cannot be combined with wicket v0.8.0. Read wicket's CHANGELOG for its own changes between v0.8.0 and v0.10.0: https://github.com/gonewx/wicket/blob/v0.10.0/CHANGELOG.md
+- **Run `go get`; nothing else is needed on the database.** There is no new migration and no backfill. Calling `migrations.Up(ctx, pool)` at startup as before is enough.
+- **`ConformsTo()` returns `4.0.0`.** A host that compares it with the suite constants it builds against needs no change; a host that compares it with a hard-coded `3.0.0` must update that value.
+
+### Added
+
+- `RefreshTokenStore.RemoveOnlineRefreshTokensBySession(ctx, sessionId)`, the wicket v0.10.0 port method behind revoking a session's online refresh tokens at logout (`ServerConfig.SetRevokeOnlineRefreshTokensOnLogout`, or the high security profile). It removes every refresh token whose session is `sessionId` and whose `AuthorizedScopes` does not hold the exact element `offline_access`, and returns the count. Offline tokens are kept; a scope that only contains the text, such as `offline_access_extended`, does not make a token offline; tokens whose scopes are absent, null or empty are online. An empty `sessionId` returns `(0, nil)` without querying, and tokens stored without a session are never selected. Only tokens that recorded their session are reached: wicket records it on online refresh tokens while the switch is in effect, and its built-in issuance creates refresh tokens only when `offline_access` was requested, so the switch concerns online tokens written by a host's own services, extension grants or migrated data. The session's tokens are locked and their scopes are judged from the stored payload in one transaction, without a new column, so no migration is needed; if any of them cannot be decoded, nothing is removed and the error is returned.
+
+### Changed
+
+- Requires wicket v0.10.0 (0.3.0 requires wicket v0.8.0).
+- All eleven stores report the `SuiteVersion` of the wicket v0.10.0 `storagetest`, `sessiontest` and `keymgmttest` suites, `4.0.0`, and pass those suites on PostgreSQL 15. Only the refresh token suite gained a case (`RemoveOnlineBySessionIsolated`); the session and key management suites changed only their version.
+
 ## [0.3.0] - 2026-11-22
 
 This release adds PostgreSQL stores for two optional wicket v0.8.0 ports: pushed authorization requests (PAR) and dynamic client registration. It still requires wicket v0.8.0; the go directive stays `go 1.27`. Existing stores, their schema and the Go API are unchanged.

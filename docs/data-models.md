@@ -34,7 +34,7 @@
 | `idx_key_records_public_id_unique`（部分唯一） | `Create` 唯一性守卫（retired 可复用 public_id） |
 | `idx_device_codes_user_code`（唯一） | `FindByUserCode` / `UpdateByUserCode` 读路径 + insert 重复拒绝（双职责） |
 | `idx_sessions_subject_id` | `GetSessionsBySubjectID` / `DeleteSessionsBySubjectID`（可空列，NULL 永不命中是正确语义） |
-| `idx_{authorization_codes,refresh_tokens,reference_tokens}_client_id` / `_session_id`（×6）+ `idx_device_codes_session_id` + `idx_user_consents_client_id`（000004） | 8 个 `Remove*ByClient` / `*BySession` 按条件移除（`DELETE ... WHERE <定位列> = $1`；空参数在 Go 侧短路返回 `(0, nil)`、不发 SQL） |
+| `idx_{authorization_codes,refresh_tokens,reference_tokens}_client_id` / `_session_id`（×6）+ `idx_device_codes_session_id` + `idx_user_consents_client_id`（000004） | 8 个 `Remove*ByClient` / `*BySession` 按条件移除（不含下述在线刷新令牌移除；`DELETE ... WHERE <定位列> = $1`；空参数在 Go 侧短路返回 `(0, nil)`、不发 SQL）；`idx_refresh_tokens_session_id` 另支撑 `RemoveOnlineRefreshTokensBySession`（wicket v0.10.0，事务内 `session_id = $1 ... FOR UPDATE` 定位锁行，Go 侧解码 payload 后仅删 `AuthorizedScopes` 不含精确元素 `offline_access` 的令牌，见 schema 设计记录例外 11） |
 | `idx_client_registrations_allowed_cors_origins`（GIN，000006） | `FindClientsByAllowedOrigin`（`allowed_cors_origins @> ARRAY[$1]::text[] AND NOT removed`） |
 
 ## 四、设计约束（读写路径推导）
