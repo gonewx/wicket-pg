@@ -389,14 +389,15 @@ func TestE2EScopedRemovalEmptyArgumentLeavesRows(t *testing.T) {
 	refs := store.NewReferenceTokenStore(pool, discardLogger())
 	devices := store.NewDeviceFlowStore(pool, discardLogger())
 	for name, remove := range map[string]func(context.Context, string) (int, error){
-		"RemoveAuthorizationCodesByClient":  codes.RemoveAuthorizationCodesByClient,
-		"RemoveAuthorizationCodesBySession": codes.RemoveAuthorizationCodesBySession,
-		"RemoveRefreshTokensByClient":       refresh.RemoveRefreshTokensByClient,
-		"RemoveRefreshTokensBySession":      refresh.RemoveRefreshTokensBySession,
-		"RemoveReferenceTokensByClient":     refs.RemoveReferenceTokensByClient,
-		"RemoveReferenceTokensBySession":    refs.RemoveReferenceTokensBySession,
-		"RemoveDeviceCodesBySession":        devices.RemoveDeviceCodesBySession,
-		"RemoveUserConsentsByClient":        consents.RemoveUserConsentsByClient,
+		"RemoveAuthorizationCodesByClient":   codes.RemoveAuthorizationCodesByClient,
+		"RemoveAuthorizationCodesBySession":  codes.RemoveAuthorizationCodesBySession,
+		"RemoveRefreshTokensByClient":        refresh.RemoveRefreshTokensByClient,
+		"RemoveRefreshTokensBySession":       refresh.RemoveRefreshTokensBySession,
+		"RemoveOnlineRefreshTokensBySession": refresh.RemoveOnlineRefreshTokensBySession,
+		"RemoveReferenceTokensByClient":      refs.RemoveReferenceTokensByClient,
+		"RemoveReferenceTokensBySession":     refs.RemoveReferenceTokensBySession,
+		"RemoveDeviceCodesBySession":         devices.RemoveDeviceCodesBySession,
+		"RemoveUserConsentsByClient":         consents.RemoveUserConsentsByClient,
 	} {
 		n, err := remove(ctx, "")
 		assertRemoved(t, name+`("")`, n, err, 0)

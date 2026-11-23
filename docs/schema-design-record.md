@@ -2,7 +2,7 @@
 
 本文件是 wicket-pg 的 schema 设计记录（FR-5 / AD-4）：**逐表逐索引指名对应的端口方法**。维护者打开本文件即可追踪每一张表、每一个索引承载了哪条读写/清理路径；任何迁移 SQL 变更都应能在本记录中追到对应的读路径或清理路径。
 
-**盘点基线：** 迁移 `migrations/000001_init.up.sql`、`migrations/000002_device_flow_user_code.up.sql`、`migrations/000003_session_subject_id.up.sql`、`migrations/000004_scoped_removal_columns.up.sql`、`migrations/000005_pushed_authorization_requests.up.sql`、`migrations/000006_client_registrations.up.sql` 与 `store/` 十一个 store 实现（2026-08-08 逐行核对；2026-11-21 补入 000004 及 wicket v0.8.0 新增端口方法；同日补入 000005 与 `PushedAuthorizationRequestStore`，以及 000006 与 `ClientRegistrationStore`）。
+**盘点基线：** 迁移 `migrations/000001_init.up.sql`、`migrations/000002_device_flow_user_code.up.sql`、`migrations/000003_session_subject_id.up.sql`、`migrations/000004_scoped_removal_columns.up.sql`、`migrations/000005_pushed_authorization_requests.up.sql`、`migrations/000006_client_registrations.up.sql` 与 `store/` 十一个 store 实现（2026-08-08 逐行核对；2026-11-21 补入 000004 及 wicket v0.8.0 新增端口方法；同日补入 000005 与 `PushedAuthorizationRequestStore`，以及 000006 与 `ClientRegistrationStore`；2026-11-22 补入 wicket v0.10.0 新增的 `RefreshTokenStore.RemoveOnlineRefreshTokensBySession`，无新迁移）。
 
 ---
 
@@ -66,7 +66,7 @@
 | `idx_authorization_codes_client_id` | `authorization_codes (client_id)`（迁移 000004 增，可空列） | `AuthorizationCodeStore.RemoveAuthorizationCodesByClient`（端口 `storage.AuthorizationCodeStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE client_id = $1` | 批量移除路径 |
 | `idx_authorization_codes_session_id` | `authorization_codes (session_id)`（迁移 000004 增，可空列） | `AuthorizationCodeStore.RemoveAuthorizationCodesBySession`（端口 `storage.AuthorizationCodeStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
 | `idx_refresh_tokens_client_id` | `refresh_tokens (client_id)`（迁移 000004 增，可空列） | `RefreshTokenStore.RemoveRefreshTokensByClient`（端口 `storage.RefreshTokenStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE client_id = $1` | 批量移除路径 |
-| `idx_refresh_tokens_session_id` | `refresh_tokens (session_id)`（迁移 000004 增，可空列） | `RefreshTokenStore.RemoveRefreshTokensBySession`（端口 `storage.RefreshTokenStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
+| `idx_refresh_tokens_session_id` | `refresh_tokens (session_id)`（迁移 000004 增，可空列） | `RefreshTokenStore.RemoveRefreshTokensBySession`（端口 `storage.RefreshTokenStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1`；`RefreshTokenStore.RemoveOnlineRefreshTokensBySession`（端口 `storage.RefreshTokenStore`，wicket v0.10.0 起，见例外 11）：事务内 `SELECT handle, payload ... WHERE session_id = $1 FOR UPDATE`，Go 侧判定后 `DELETE ... WHERE handle = ANY($1) AND session_id = $2` | 批量移除路径 |
 | `idx_reference_tokens_client_id` | `reference_tokens (client_id)`（迁移 000004 增，可空列） | `ReferenceTokenStore.RemoveReferenceTokensByClient`（端口 `storage.ReferenceTokenStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE client_id = $1` | 批量移除路径 |
 | `idx_reference_tokens_session_id` | `reference_tokens (session_id)`（迁移 000004 增，可空列） | `ReferenceTokenStore.RemoveReferenceTokensBySession`（端口 `storage.ReferenceTokenStore`，wicket v0.5.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
 | `idx_device_codes_session_id` | `device_codes (session_id)`（迁移 000004 增，可空列） | `DeviceFlowStore.RemoveDeviceCodesBySession`（端口 `storage.DeviceFlowStore`，wicket v0.8.0 起；Story 4.2 实现，见例外 8）：`DELETE ... WHERE session_id = $1` | 批量移除路径 |
@@ -107,6 +107,13 @@
    - 更新与删除都是单语句条件 UPDATE（`WHERE client_id = $1 AND NOT removed AND revision = $2`），不先查后写、不开显式事务；0 行时复查 `SELECT removed ... WHERE client_id = $1`：无行或已墓碑返回 `storage.ErrNotFound`，活记录返回 `storage.ErrVersionConflict`。
    - nil `AllowedCorsOrigins` 写入前归一为空数组（pgx 会把 nil 切片写成 NULL，而列为 `NOT NULL`）。origin 查找用 `@>` 做 text 等值包含，大小写、端口和尾斜杠都精确匹配，不过滤 `Enabled`，未命中返回非 nil 空切片。
    - 端口不提供按摘要查找，也不提供无过滤枚举，所以摘要列不建索引；注册客户端没有服务端生命周期，本表无过期列、无清理方法。
+
+11. **在线刷新令牌按 session 移除在 Go 侧判定 scope，不落 scope 列（wicket v0.10.0，无新迁移）**：`RefreshTokenStore.RemoveOnlineRefreshTokensBySession` 在一个事务内执行：`SELECT handle, payload FROM refresh_tokens WHERE session_id = $1 FOR UPDATE` 经 `idx_refresh_tokens_session_id` 定位并锁住该会话的行，逐行用 store codec 解码 payload，`AuthorizedScopes` 不含精确元素 `offline_access` 的句柄收集起来，再在同一事务内 `DELETE ... WHERE handle = ANY($1) AND session_id = $2`。约定与理由：
+   - **精确元素匹配**：按切片元素逐个比较，`offline_access_extended` 不算离线；scope 为 nil、空切片或 payload 缺 `AuthorizedScopes` 键时视为在线并移除。
+   - **不在 SQL 内解码 payload**：PostgreSQL 的 jsonb 拒绝 `\u0000` 转义，而 codec 能写入并读回含 NUL 的字符串（000004 的 NUL 预检即源于此）；SQL 侧 `::jsonb` 判定会让该会话只要有一个这样的令牌就整体报错、永远删不掉。Go 侧判定与 `GetRefreshToken` 用同一个 codec，读得出的令牌就判得出。
+   - **不加 scope 列的理由**：新增 `offline_access` 之类的列须迁移回填，且迁移后旧二进制写入的行该列为 NULL，无论 NULL 被当作在线还是离线，都会误删离线令牌或漏删在线令牌；读 payload 对任何时期写入的行都能判定，升级只需 `go get`，无部署顺序要求。代价是逐行解码，但只扫一个会话的令牌（`session_id` 索引定位）。
+   - **锁与原子性**：`FOR UPDATE` 阻止并发的 `UpdateRefreshToken` 在判定与删除之间改写 scope；DELETE 带 `session_id = $2` 作双保险。任一行解码失败或数据库出错都回滚事务、不删除任何行并返回错误。判定时刻之后才插入的同会话令牌不在本次范围内，与端口按调用时快照移除的语义一致。
+   - 空 `sessionId` 在 Go 侧短路返回 `(0, nil)`、不发 SQL（同例外 8）；`session_id` 为 NULL 的行永不命中。
 
 ---
 

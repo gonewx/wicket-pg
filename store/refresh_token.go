@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/gonewx/wicket/storage"
@@ -167,6 +168,81 @@ func (s *RefreshTokenStore) RemoveRefreshTokensBySession(ctx context.Context, se
 	s.logger.Debug("refresh tokens removed by session", "session_prefix", handlePrefix(sessionId), "count", n)
 	return n, nil
 }
+
+// RemoveOnlineRefreshTokensBySession deletes every refresh token whose
+// SessionId equals sessionId and whose AuthorizedScopes does not hold the
+// exact element "offline_access", and returns how many rows were removed.
+// Tokens whose scopes are absent, null or empty are online and removed; a
+// scope that only contains the text (such as "offline_access_extended")
+// does not make a token offline. Zero matches return (0, nil). An empty
+// sessionId returns (0, nil) without issuing SQL, so records without a
+// session are never selected.
+//
+// The session's rows are located on the refresh_tokens.session_id locator
+// column and locked (SELECT ... FOR UPDATE) inside one transaction; each
+// payload is decoded with the store codec and its scopes are compared
+// element by element in Go; the online handles are then deleted in the
+// same transaction. The lock keeps a concurrent UpdateRefreshToken from
+// changing a token's scopes between the decision and the delete. The scopes
+// are judged in Go rather than in SQL because PostgreSQL's jsonb rejects
+// the \u0000 escape the codec may legitimately carry, so an SQL-side decode
+// would fail the whole session on one such token. Any decode or database
+// error rolls the transaction back: nothing is removed and the error is
+// returned.
+func (s *RefreshTokenStore) RemoveOnlineRefreshTokensBySession(ctx context.Context, sessionId string) (int, error) {
+	if sessionId == "" {
+		return 0, nil
+	}
+	n := 0
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			"SELECT handle, payload FROM refresh_tokens WHERE session_id = $1 FOR UPDATE", sessionId)
+		if err != nil {
+			return fmt.Errorf("query refresh tokens of session: %w", err)
+		}
+		var online []string
+		for rows.Next() {
+			var handle string
+			var payload []byte
+			if err := rows.Scan(&handle, &payload); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan refresh token row: %w", err)
+			}
+			token := new(models.RefreshToken)
+			if err := s.codec.decode(payload, token); err != nil {
+				rows.Close()
+				return fmt.Errorf("decode refresh token payload: %w", err)
+			}
+			if !slices.Contains(token.AuthorizedScopes, offlineAccessScope) {
+				online = append(online, handle)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate refresh tokens of session: %w", err)
+		}
+		if len(online) == 0 {
+			return nil
+		}
+		tag, err := tx.Exec(ctx,
+			"DELETE FROM refresh_tokens WHERE handle = ANY($1) AND session_id = $2", online, sessionId)
+		if err != nil {
+			return fmt.Errorf("delete online refresh tokens: %w", err)
+		}
+		n = int(tag.RowsAffected())
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("remove online refresh tokens by session: %w", err)
+	}
+	s.logger.Debug("online refresh tokens removed by session", "session_prefix", handlePrefix(sessionId), "count", n)
+	return n, nil
+}
+
+// offlineAccessScope is the scope whose exact presence marks a refresh
+// token as offline. It is spelled out here, matching the port contract,
+// rather than imported from the core module's root package.
+const offlineAccessScope = "offline_access"
 
 // RemoveExpired deletes tokens whose derived expiry precedes cutoff,
 // strictly (a record with expires_at == cutoff is kept), and returns how

@@ -28,6 +28,7 @@ func TestScopedRemovalEmptyArgumentIssuesNoSQL(t *testing.T) {
 		{"RemoveAuthorizationCodesBySession", codes.RemoveAuthorizationCodesBySession},
 		{"RemoveRefreshTokensByClient", refresh.RemoveRefreshTokensByClient},
 		{"RemoveRefreshTokensBySession", refresh.RemoveRefreshTokensBySession},
+		{"RemoveOnlineRefreshTokensBySession", refresh.RemoveOnlineRefreshTokensBySession},
 		{"RemoveReferenceTokensByClient", reference.RemoveReferenceTokensByClient},
 		{"RemoveReferenceTokensBySession", reference.RemoveReferenceTokensBySession},
 		{"RemoveUserConsentsByClient", consents.RemoveUserConsentsByClient},

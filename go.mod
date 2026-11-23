@@ -2,15 +2,15 @@ module github.com/gonewx/wicket-pg
 
 go 1.27
 
-// This module requires the published wicket module at v0.8.0 — the newest
+// This module requires the published wicket module at v0.10.0 — the newest
 // released version at release time, per this repo's release discipline. All
 // three contract suites it ships (storagetest, sessiontest, keymgmttest)
-// report SuiteVersion 3.0.0, and every store's ConformsTo returns those
+// report SuiteVersion 4.0.0, and every store's ConformsTo returns those
 // constants. Port sentinel errors and suite entry points are imported from
 // wicket; this module never redefines them.
 
 require (
-	github.com/gonewx/wicket v0.8.0
+	github.com/gonewx/wicket v0.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	gopkg.in/yaml.v3 v3.0.1
 )

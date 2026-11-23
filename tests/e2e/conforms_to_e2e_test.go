@@ -108,7 +108,7 @@ func TestE2ESuiteVersionsPinned(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	want := "3" + ".0.0"
+	want := "4" + ".0.0"
 	creds := map[string]interface{ ConformsTo() string }{
 		"AuthorizationCodeStore":                store.NewAuthorizationCodeStore(pool, discardLogger()),
 		"RefreshTokenStore":                     store.NewRefreshTokenStore(pool, discardLogger()),

@@ -33,7 +33,7 @@ import (
 // shared between the nine entries (AC-3, AD-9).
 //
 // The MUST/MAY case counts in the comments below are those of storagetest
-// SuiteVersion 3.0.0 (wicket v0.8.0); re-count them on every suite bump.
+// SuiteVersion 4.0.0 (wicket v0.10.0); re-count them on every suite bump.
 
 // TestAuthorizationCodeStoreSuite runs the authorization code conformance
 // suite (17 MUST cases plus the MAY credential case, enabled via WithMay)
@@ -47,7 +47,7 @@ func TestAuthorizationCodeStoreSuite(t *testing.T) {
 		storagetest.WithMay(true))
 }
 
-// TestRefreshTokenStoreSuite runs the refresh token conformance suite (18
+// TestRefreshTokenStoreSuite runs the refresh token conformance suite (19
 // MUST cases plus the 3 MAY cases — rotation replay defense, the lifetime
 // update round trip and the credential — enabled via WithMay) against the
 // pgx-backed adapter on a real PostgreSQL server. The suite is skipped when

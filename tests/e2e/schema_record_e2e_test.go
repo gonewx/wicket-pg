@@ -360,6 +360,7 @@ var readPaths = []readPath{
 	{"SELECT handle FROM authorization_codes WHERE session_id = 's-1'", "idx_authorization_codes_session_id"},
 	{"SELECT handle FROM refresh_tokens WHERE client_id = 'c-1'", "idx_refresh_tokens_client_id"},
 	{"SELECT handle FROM refresh_tokens WHERE session_id = 's-1'", "idx_refresh_tokens_session_id"},
+	{"SELECT handle, payload FROM refresh_tokens WHERE session_id = 's-1' FOR UPDATE", "idx_refresh_tokens_session_id"},
 	{"SELECT handle FROM reference_tokens WHERE client_id = 'c-1'", "idx_reference_tokens_client_id"},
 	{"SELECT handle FROM reference_tokens WHERE session_id = 's-1'", "idx_reference_tokens_session_id"},
 	{"SELECT handle FROM device_codes WHERE session_id = 's-1'", "idx_device_codes_session_id"},
