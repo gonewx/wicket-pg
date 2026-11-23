@@ -9,13 +9,13 @@
 - **模块:** `github.com/gonewx/wicket-pg`
 - **架构:** 端口与适配器（六边形）——wicket 定义端口与契约套件，本仓是平级适配器仓
 - **数据库:** PostgreSQL 15+（`pgx/v5` 原生驱动，不经 `database/sql`）
-- **状态:** 实现完成，已适配 wicket v0.10.0（套件 4.0.0；最新迁移仍为 000006）。下一版本 v0.4.0（**待发布**，发布说明草稿见 `CHANGELOG.md` 的 `[Unreleased]` 段）要求 wicket v0.10.0，补齐 `RefreshTokenStore.RemoveOnlineRefreshTokensBySession`（登出时撤销会话的在线刷新令牌），不新增 store 与迁移。v0.3.0（2026-11-22 已发布，wicket v0.8.0）新增 PAR store（`PushedAuthorizationRequestStore`）与迁移 000005（Story 5.1）、DCR store（`ClientRegistrationStore`，同时实现 `ClientOriginLookup`）与迁移 000006（Story 5.2），发布说明见 `CHANGELOG.md` 的 `[0.3.0]` 段；开启 DCR 前须用 `RegisterClient` 预置既有客户端（见部署指南第五节）。此前已发布 v0.2.1（2026-11-21，更正 v0.2.0 升级说明中的刷新令牌回收建议，不改代码与 schema）、v0.2.0（2026-11-21，面向 wicket v0.8.0；发布说明见 `CHANGELOG.md`）与 v0.1.0 / v0.1.1 / v0.1.2 / v0.1.3（与 wicket v0.1.x 组合时用 v0.1.3）
+- **状态:** 实现完成，已适配 wicket v0.10.0（套件 4.0.0；最新迁移仍为 000006）。v0.4.0（2026-11-22 已发布，发布说明见 `CHANGELOG.md` 的 `[0.4.0]` 段）要求 wicket v0.10.0，补齐 `RefreshTokenStore.RemoveOnlineRefreshTokensBySession`（登出时撤销会话的在线刷新令牌），不新增 store 与迁移。v0.3.0（2026-11-22 已发布，wicket v0.8.0）新增 PAR store（`PushedAuthorizationRequestStore`）与迁移 000005（Story 5.1）、DCR store（`ClientRegistrationStore`，同时实现 `ClientOriginLookup`）与迁移 000006（Story 5.2），发布说明见 `CHANGELOG.md` 的 `[0.3.0]` 段；开启 DCR 前须用 `RegisterClient` 预置既有客户端（见部署指南第五节）。此前已发布 v0.2.1（2026-11-21，更正 v0.2.0 升级说明中的刷新令牌回收建议，不改代码与 schema）、v0.2.0（2026-11-21，面向 wicket v0.8.0；发布说明见 `CHANGELOG.md`）与 v0.1.0 / v0.1.1 / v0.1.2 / v0.1.3（与 wicket v0.1.x 组合时用 v0.1.3）
 
 ### 快速参考
 
 | 项 | 值 |
 |---|---|
-| 推荐版本 | `v0.4.0` 打 tag 后用 `v0.4.0`（要求 wicket v0.10.0；从 v0.3.x 升级只需 `go get`，无新迁移、无回填，`ConformsTo()` 变为 4.0.0）；在此之前及宿主仍在 wicket v0.8.0 时用 `v0.3.0`（已于 2026-11-22 发布；新增 PAR / DCR store，要求 wicket v0.8.0；从 v0.2.x 升级只需 `go get` 后 `Up` 应用 000005 / 000006，无需回填；从 v0.1.x 升级须先停旧写入方再 `Up` 应用 000004，v0.1.x 签发的刷新令牌回填前不得对其调用 `RemoveExpired`，见部署指南第六节）；与 wicket v0.1.x 组合时用 `v0.1.3`（v0.1.x 线最新发布；v0.1.0 因分发层分裂不推荐引用） |
+| 推荐版本 | `v0.4.0`（已于 2026-11-22 发布；要求 wicket v0.10.0；从 v0.3.x 升级只需 `go get`，无新迁移、无回填，`ConformsTo()` 变为 4.0.0）；宿主仍在 wicket v0.8.0 时用 `v0.3.0`（已于 2026-11-22 发布；新增 PAR / DCR store，要求 wicket v0.8.0；从 v0.2.x 升级只需 `go get` 后 `Up` 应用 000005 / 000006，无需回填；从 v0.1.x 升级须先停旧写入方再 `Up` 应用 000004，v0.1.x 签发的刷新令牌回填前不得对其调用 `RemoveExpired`，见部署指南第六节）；与 wicket v0.1.x 组合时用 `v0.1.3`（v0.1.x 线最新发布；v0.1.0 因分发层分裂不推荐引用） |
 | 关键依赖 | `github.com/gonewx/wicket v0.10.0`（三套件 `SuiteVersion` 4.0.0，十一个 `ConformsTo()` 均返回 4.0.0）、`github.com/jackc/pgx/v5 v5.10.0`、`gopkg.in/yaml.v3 v3.0.1`（仅测试） |
 | 入口点 | `store.NewXxxStore(pool, logger)` × 11、`migrations.Up/Down(ctx, pool)` |
 | 测试总量 | 162 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |

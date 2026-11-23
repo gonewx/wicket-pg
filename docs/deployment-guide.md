@@ -89,7 +89,7 @@ NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh release create "$V" -R gonewx/wicke
 
 7. **发版纪律**：
    - **Go 版本标记两处形态不同且各自精确**：`go.mod` 的 `go 1.27` 是对下游的语言版本承诺（不带补丁号），`ci.yml` 的 `1.27.0` 是本仓构建环境 pin（取精确补丁版）。rc 已于 Go 1.27.0 发布后去除，`tests/e2e/ci_job_e2e_test.go` 分别精确比对两者，预发布值一律不得通过。
-   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译；v0.1.1 与 v0.1.2 可用但仍携带 rc directive——文档在 v0.1.x 线内只引用 v0.1.3（首个不携带 rc directive 的版本，也是与 wicket v0.1.x 组合时应停留的版本）；面向 wicket v0.10.0 的安装与升级引用 v0.4.0（发布前按「待发布」陈述），宿主仍在 wicket v0.8.0 时引用 v0.3.0（v0.3.0 新增 PAR 与 DCR store；v0.2.0 的升级说明建议升级前对各 store 调用 `RemoveExpired`，会删除 v0.1.x 签发的刷新令牌，已由 v0.2.1 更正，v0.3.0 沿用更正后的说明）。
+   - 已发布 tag 不可变：v0.1.0 因分发层分裂（proxy/sumdb 固定去 rc 旧内容，与 GitHub tag 分裂）**不可用**，默认 GOPROXY 消费者拉到的 v0.1.0 不可编译；v0.1.1 与 v0.1.2 可用但仍携带 rc directive——文档在 v0.1.x 线内只引用 v0.1.3（首个不携带 rc directive 的版本，也是与 wicket v0.1.x 组合时应停留的版本）；面向 wicket v0.10.0 的安装与升级引用 v0.4.0（2026-11-22 已发布），宿主仍在 wicket v0.8.0 时引用 v0.3.0（v0.3.0 新增 PAR 与 DCR store；v0.2.0 的升级说明建议升级前对各 store 调用 `RemoveExpired`，会删除 v0.1.x 签发的刷新令牌，已由 v0.2.1 更正，v0.3.0 沿用更正后的说明）。
    - 提交信息保持功能中性（门禁扫全量 git 历史）。
 
 ## 四、远端操作注意事项
