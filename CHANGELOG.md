@@ -4,7 +4,9 @@ All notable changes to this project are documented in this file; releases before
 
 ## [Unreleased]
 
-Draft for 0.5.0. This release targets wicket v0.15.0 and requires it; hosts that stay on wicket v0.10.0 through v0.12.0 keep using 0.4.0. There is no release for wicket v0.13.0 or v0.14.0 (suite 5.0.0). It adds migration `000007`; the go directive stays `go 1.27`.
+## [0.5.0] - 2026-11-27
+
+This release targets wicket v0.15.0 and requires it; hosts that stay on wicket v0.10.0 through v0.12.0 keep using 0.4.0. There is no release for wicket v0.13.0 or v0.14.0 (suite 5.0.0). It adds migration `000007`; the go directive stays `go 1.27`.
 
 ### Upgrading from 0.4.x
 
@@ -116,7 +118,8 @@ Releases for the wicket v0.1.x line. Published tags are immutable, so these note
 - **0.1.1 and 0.1.2 - 2026-08-08**: usable, but they carry the prerelease go directive `go 1.27rc1`.
 - **0.1.0 - 2026-08-08**: do not use. Fetched through the default Go module proxy it does not build, because the content served by the proxy and checksum database differs from the repository tag.
 
-[Unreleased]: https://github.com/gonewx/wicket-pg/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/gonewx/wicket-pg/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/gonewx/wicket-pg/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/gonewx/wicket-pg/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/gonewx/wicket-pg/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/gonewx/wicket-pg/compare/v0.2.0...v0.2.1
