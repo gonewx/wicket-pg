@@ -19,16 +19,14 @@ import (
 // schema name, pool, or constructor state is shared across the groups
 // (AC-3, AD-9).
 //
-// The suite runs without WithMay. The MAY case LazyExpiryReclaimsOnRead is
-// not implementable here: the adapter constructor takes no clock (AD-1),
-// time.Now() inside the adapter would break the MUST case
-// ReclaimBoundaryStrictlyBefore (whose fixed time base predates the real
-// clock), and a database clock would violate NFR-1.6/AD-5. The three
-// implementable MAY semantics (concurrent appends, concurrent create
-// single-winner, ConformsTo) are verified equivalently by the e2e suite;
-// see AC-12 in story 1.11.
+// The suite runs with WithMay, so the four MAY concurrency cases
+// (concurrent appends, concurrent create single-winner, and the
+// RenewSession / TouchSession races against AddClientID) are exercised
+// against real PostgreSQL. The MAY case LazyExpiryReclaimsOnRead, which
+// kept the suite on MUST-only before, was removed in suite 5.0.0 because it
+// contradicts the MUST rule that read paths do not judge expiry.
 func TestSessionStoreSuite(t *testing.T) {
 	sessiontest.RunSessionStoreSuite(t, NewStore(t, func(pool *pgxpool.Pool, logger *slog.Logger) session.Store {
 		return store.NewSessionStore(pool, logger)
-	}))
+	}), sessiontest.WithMay(true))
 }

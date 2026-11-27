@@ -71,7 +71,7 @@ func TestAllStoresConformToSuiteVersions(t *testing.T) {
 // expected value is assembled at runtime so the audit below and the lineage
 // gate never match this file's own source.
 func TestSuiteVersionsPinned(t *testing.T) {
-	want := "4" + ".0.0"
+	want := "6" + ".0.0"
 	for name, got := range map[string]string{
 		"storagetest": storagetest.SuiteVersion,
 		"sessiontest": sessiontest.SuiteVersion,
@@ -98,7 +98,7 @@ var conformsToMethodBody = regexp.MustCompile(`func \([^)]*\) ConformsTo\(\) str
 // cannot be hit by the audit it performs (the lineage gate's self-hit
 // lesson).
 func TestConformsToNoHardcodedVersionLiteral(t *testing.T) {
-	versionLiteral := "4" + ".0.0"
+	versionLiteral := "6" + ".0.0"
 	expectedBodies := []string{
 		"return storagetest.SuiteVersion",
 		"return sessiontest.SuiteVersion",

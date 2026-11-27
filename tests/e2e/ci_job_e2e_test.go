@@ -163,12 +163,12 @@ func TestE2EConformanceJobRunsWholePackageCommand(t *testing.T) {
 		t.Error("key records fixture must enable WithMay(true)")
 	}
 
-	// The session suite runs without WithMay: its LazyExpiryReclaimsOnRead
-	// MAY case is not implementable (story 1.11), so no sessiontest.WithMay
-	// call may appear in the fixture.
+	// The session suite runs with WithMay since suite 5.0.0 removed the
+	// unimplementable LazyExpiryReclaimsOnRead MAY case; the remaining MAY
+	// cases (including the RenewSession / TouchSession races) must run.
 	sessionFixture := readFile(t, filepath.Join(root, "tests/conformance/session_fixture_test.go"))
-	if strings.Contains(sessionFixture, "sessiontest.WithMay") {
-		t.Error("session fixture must not enable WithMay")
+	if !strings.Contains(sessionFixture, "sessiontest.WithMay(true)") {
+		t.Error("session fixture must enable WithMay(true)")
 	}
 }
 

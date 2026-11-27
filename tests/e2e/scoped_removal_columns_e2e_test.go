@@ -168,7 +168,7 @@ func TestE2EScopedRemovalColumnsDeviceApprovalRefreshesSession(t *testing.T) {
 
 	approved := &models.DeviceCode{ClientId: "client-a", SessionId: "sess-approve",
 		IsAuthorized: true, CreationTime: fixedNow, Lifetime: 300}
-	if err := devices.UpdateByUserCode(ctx, "user-1", approved); err != nil {
+	if err := devices.UpdateByUserCode(ctx, "user-1", approved, pending.Version); err != nil {
 		t.Fatalf("UpdateByUserCode: %v", err)
 	}
 	_, s = locatorColumns(t, pool, "device_codes", "NULL", "device-1")

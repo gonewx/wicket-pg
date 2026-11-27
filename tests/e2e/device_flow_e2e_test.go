@@ -5,8 +5,8 @@
 // schema: the dual-code single-row shape (device code in handle, user code
 // in user_code), the column-level expiry derivation (CreationTime plus
 // Lifetime in seconds, including the zero-lifetime case), the expiry refresh
-// on UpdateByUserCode so no stale expiry survives, and the zero-row no-op
-// semantics of updating an absent user code. The suite is gated behind
+// on UpdateByUserCode so no stale expiry survives, and the not-found
+// semantics of updating an absent user code (no row is created). The suite is gated behind
 // WICKET_PG_TEST_DATABASE_URL so the plain test run stays green without a
 // database.
 package e2e_test
@@ -112,7 +112,7 @@ func TestE2EDeviceFlowUpdateRefreshesExpiresAt(t *testing.T) {
 	assertDeviceFlowExpiresAt(t, pool, "device-upd", fixedNow.Add(300*time.Second))
 
 	updated := &models.DeviceCode{CreationTime: fixedNow, Lifetime: 600, ClientId: "client-flow", IsAuthorized: true}
-	if err := s.UpdateByUserCode(t.Context(), "user-upd", updated); err != nil {
+	if err := s.UpdateByUserCode(t.Context(), "user-upd", updated, initial.Version); err != nil {
 		t.Fatalf("UpdateByUserCode: %v", err)
 	}
 	assertDeviceFlowExpiresAt(t, pool, "device-upd", fixedNow.Add(600*time.Second))
@@ -126,10 +126,10 @@ func TestE2EDeviceFlowUpdateRefreshesExpiresAt(t *testing.T) {
 	}
 }
 
-// TestE2EDeviceFlowUpdateMissingUserCodeIsNoOp asserts the zero-row write
-// semantics: updating an absent user code succeeds without error and does
-// not create a new row.
-func TestE2EDeviceFlowUpdateMissingUserCodeIsNoOp(t *testing.T) {
+// TestE2EDeviceFlowUpdateMissingUserCodeIsNotFound asserts the zero-row
+// write semantics of the version-guarded update: updating an absent user
+// code fails with storage.ErrNotFound and does not create a new row.
+func TestE2EDeviceFlowUpdateMissingUserCodeIsNotFound(t *testing.T) {
 	pool := newScratchPool(t)
 	if err := migrations.Up(t.Context(), pool); err != nil {
 		t.Fatalf("Up: %v", err)
@@ -137,8 +137,8 @@ func TestE2EDeviceFlowUpdateMissingUserCodeIsNoOp(t *testing.T) {
 	s := store.NewDeviceFlowStore(pool, discardLogger())
 
 	data := &models.DeviceCode{CreationTime: fixedNow, Lifetime: 300, ClientId: "client-flow"}
-	if err := s.UpdateByUserCode(t.Context(), "absent-user", data); err != nil {
-		t.Fatalf("UpdateByUserCode on absent user code: %v", err)
+	if err := s.UpdateByUserCode(t.Context(), "absent-user", data, 1); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("UpdateByUserCode on absent user code error = %v, want storage.ErrNotFound", err)
 	}
 
 	var count int
@@ -147,15 +147,15 @@ func TestE2EDeviceFlowUpdateMissingUserCodeIsNoOp(t *testing.T) {
 		t.Fatalf("count device_codes rows: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("device_codes holds %d rows after no-op update, want 0", count)
+		t.Errorf("device_codes holds %d rows after missed update, want 0", count)
 	}
 
 	got, err := s.FindByUserCode(t.Context(), "absent-user")
 	if !errors.Is(err, storage.ErrNotFound) {
-		t.Errorf("read after no-op update error = %v, want storage.ErrNotFound", err)
+		t.Errorf("read after missed update error = %v, want storage.ErrNotFound", err)
 	}
 	if got != nil {
-		t.Errorf("read after no-op update record = %v, want nil", got)
+		t.Errorf("read after missed update record = %v, want nil", got)
 	}
 }
 

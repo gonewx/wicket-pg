@@ -5,23 +5,27 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/gonewx/wicket/session"
 	"github.com/gonewx/wicket/session/sessiontest"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // SessionStore is the pgx-backed adapter for the wicket session.Store port.
 // Each session is one row keyed by session_id with the model serialized
-// into the payload column. Three further columns back real query paths:
-// subject_id (batch lookup and revocation by subject), client_ids (the
-// authoritative source for ClientIDs, appended atomically and
-// deduplicated), and expires (reclaim-only cleanup; expiry judgement lives
-// on the core side). A zero-value Expires is stored as NULL so the session
-// never expires.
+// into the payload column. Further columns back real query paths and the
+// atomic partial writes: subject_id (batch lookup and revocation by
+// subject), client_ids (the authoritative source for ClientIDs, appended
+// atomically and deduplicated), renewed and expires (the authoritative
+// source for Renewed and Expires, written in place by RenewSession and
+// TouchSession; expires also backs reclaim-only cleanup, expiry judgement
+// lives on the core side). A zero-value Renewed or Expires is stored as
+// NULL; a NULL expires means the session never expires.
 type SessionStore struct {
 	baseStore
 }
@@ -46,20 +50,11 @@ func (s *SessionStore) GetSession(ctx context.Context, sessionID string) (*sessi
 	if err := ctx.Err(); err != nil {
 		return nil, session.ErrSessionNotFound
 	}
-	var clientIDs []string
-	var payload []byte
-	err := s.pool.QueryRow(ctx,
-		"SELECT client_ids, payload FROM sessions WHERE session_id = $1", sessionID).Scan(&clientIDs, &payload)
+	rec, err := s.scanRecord(s.pool.QueryRow(ctx,
+		"SELECT "+sessionColumns+" FROM sessions WHERE session_id = $1", sessionID))
 	if err != nil {
 		return nil, mapReadErr(err, session.ErrSessionNotFound)
 	}
-	rec := new(session.Record)
-	if err := s.codec.decode(payload, rec); err != nil {
-		return nil, fmt.Errorf("decode session payload: %w", err)
-	}
-	// client_ids is the authoritative source for ClientIDs; the payload
-	// copy is a write-time snapshot and may be stale after AddClientID.
-	rec.ClientIDs = clientIDs
 	s.logger.Debug("session read", "session_id_prefix", handlePrefix(sessionID), "found", true)
 	return rec, nil
 }
@@ -84,17 +79,17 @@ func (s *SessionStore) CreateSession(ctx context.Context, rec *session.Record) e
 		clientIDs = []string{}
 	}
 	_, err = s.pool.Exec(ctx,
-		"INSERT INTO sessions (session_id, subject_id, client_ids, expires, payload) VALUES ($1, $2, $3, $4, $5)",
-		rec.SessionID, subjectID, clientIDs, expiresAtPtr(rec.Expires), payload)
+		"INSERT INTO sessions (session_id, subject_id, client_ids, renewed, expires, payload) VALUES ($1, $2, $3, $4, $5, $6)",
+		rec.SessionID, subjectID, clientIDs, expiresAtPtr(rec.Renewed), expiresAtPtr(rec.Expires), payload)
 	if err != nil {
-		return fmt.Errorf("create session %s: %w", rec.SessionID, err)
+		return fmt.Errorf("create session: %w", err)
 	}
 	s.logger.Debug("session stored", "session_id_prefix", handlePrefix(rec.SessionID))
 	return nil
 }
 
 // UpdateSession replaces the whole session row for the id: payload,
-// subject_id, client_ids, and expires are refreshed together in one
+// subject_id, client_ids, renewed and expires are refreshed together in one
 // statement, so a Coordinator refresh of Renewed is persisted. Updating a
 // session that is not present succeeds as a no-op.
 func (s *SessionStore) UpdateSession(ctx context.Context, rec *session.Record) error {
@@ -111,10 +106,10 @@ func (s *SessionStore) UpdateSession(ctx context.Context, rec *session.Record) e
 		clientIDs = []string{}
 	}
 	_, err = s.pool.Exec(ctx,
-		"UPDATE sessions SET payload = $2, subject_id = $3, client_ids = $4, expires = $5 WHERE session_id = $1",
-		rec.SessionID, payload, subjectID, clientIDs, expiresAtPtr(rec.Expires))
+		"UPDATE sessions SET payload = $2, subject_id = $3, client_ids = $4, renewed = $5, expires = $6 WHERE session_id = $1",
+		rec.SessionID, payload, subjectID, clientIDs, expiresAtPtr(rec.Renewed), expiresAtPtr(rec.Expires))
 	if err != nil {
-		return fmt.Errorf("update session %s: %w", rec.SessionID, err)
+		return fmt.Errorf("update session: %w", err)
 	}
 	s.logger.Debug("session updated", "session_id_prefix", handlePrefix(rec.SessionID))
 	return nil
@@ -126,18 +121,19 @@ func (s *SessionStore) DeleteSession(ctx context.Context, sessionID string) erro
 	_, err := s.pool.Exec(ctx,
 		"DELETE FROM sessions WHERE session_id = $1", sessionID)
 	if err != nil {
-		return fmt.Errorf("delete session %s: %w", sessionID, err)
+		return fmt.Errorf("delete session: %w", err)
 	}
 	s.logger.Debug("session removed", "session_id_prefix", handlePrefix(sessionID))
 	return nil
 }
 
 // GetSessionsBySubjectID returns an independent copy of every session for
-// the subject, in an empty but non-nil slice when none match. ClientIDs
-// come from the client_ids column for every row, as in GetSession.
+// the subject, in an empty but non-nil slice when none match. ClientIDs,
+// Renewed and Expires come from their columns for every row, as in
+// GetSession.
 func (s *SessionStore) GetSessionsBySubjectID(ctx context.Context, subjectID string) ([]*session.Record, error) {
 	rows, err := s.pool.Query(ctx,
-		"SELECT client_ids, payload FROM sessions WHERE subject_id = $1", subjectID)
+		"SELECT "+sessionColumns+" FROM sessions WHERE subject_id = $1", subjectID)
 	if err != nil {
 		return nil, fmt.Errorf("query sessions by subject: %w", err)
 	}
@@ -145,16 +141,10 @@ func (s *SessionStore) GetSessionsBySubjectID(ctx context.Context, subjectID str
 
 	sessions := []*session.Record{}
 	for rows.Next() {
-		var clientIDs []string
-		var payload []byte
-		if err := rows.Scan(&clientIDs, &payload); err != nil {
-			return nil, fmt.Errorf("scan session row: %w", err)
+		rec, err := s.scanRecord(rows)
+		if err != nil {
+			return nil, fmt.Errorf("read session row: %w", err)
 		}
-		rec := new(session.Record)
-		if err := s.codec.decode(payload, rec); err != nil {
-			return nil, fmt.Errorf("decode session payload: %w", err)
-		}
-		rec.ClientIDs = clientIDs
 		sessions = append(sessions, rec)
 	}
 	if err := rows.Err(); err != nil {
@@ -185,9 +175,51 @@ func (s *SessionStore) AddClientID(ctx context.Context, sessionID, clientID stri
 		"UPDATE sessions SET client_ids = array_append(client_ids, $2) WHERE session_id = $1 AND NOT ($2 = ANY(client_ids))",
 		sessionID, clientID)
 	if err != nil {
-		return fmt.Errorf("add client id to session %s: %w", sessionID, err)
+		return fmt.Errorf("add client id to session: %w", err)
 	}
 	s.logger.Debug("client id appended", "session_id_prefix", handlePrefix(sessionID), "client_id_prefix", handlePrefix(clientID))
+	return nil
+}
+
+// RenewSession sets only the session's Renewed and Expires in one UPDATE
+// on the renewed and expires columns and returns an independent copy of the
+// renewed record read back by the same statement. The payload, subject_id
+// and client_ids are not written, so a client id appended by AddClientID
+// after the caller read the record survives. Expiry is not judged: an
+// expired session is renewed too. A missing session returns
+// (nil, session.ErrSessionNotFound) and no row is created.
+func (s *SessionStore) RenewSession(ctx context.Context, sessionID string, renewed, expires time.Time) (*session.Record, error) {
+	rec, err := s.scanRecord(s.pool.QueryRow(ctx,
+		"UPDATE sessions SET renewed = $2, expires = $3 WHERE session_id = $1 RETURNING "+sessionColumns,
+		sessionID, expiresAtPtr(renewed), expiresAtPtr(expires)))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, session.ErrSessionNotFound
+		}
+		return nil, fmt.Errorf("renew session: %w", err)
+	}
+	s.logger.Debug("session renewed", "session_id_prefix", handlePrefix(sessionID))
+	return rec, nil
+}
+
+// TouchSession sets only the session's Renewed in one UPDATE on the renewed
+// column. Every other field, including an Expires written concurrently by
+// RenewSession and client ids appended by AddClientID, keeps its stored
+// value. Expiry is not judged and the old Renewed is not compared. A
+// missing session (zero matched rows; PostgreSQL counts matched rows, so a
+// repeated identical value still counts) returns session.ErrSessionNotFound
+// and no row is created.
+func (s *SessionStore) TouchSession(ctx context.Context, sessionID string, renewed time.Time) error {
+	tag, err := s.pool.Exec(ctx,
+		"UPDATE sessions SET renewed = $2 WHERE session_id = $1",
+		sessionID, expiresAtPtr(renewed))
+	if err != nil {
+		return fmt.Errorf("touch session: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return session.ErrSessionNotFound
+	}
+	s.logger.Debug("session touched", "session_id_prefix", handlePrefix(sessionID))
 	return nil
 }
 
@@ -208,4 +240,41 @@ func (s *SessionStore) DeleteExpired(ctx context.Context, cutoff time.Time) (int
 // ConformsTo reports the suite version this adapter is verified against.
 func (s *SessionStore) ConformsTo() string {
 	return sessiontest.SuiteVersion
+}
+
+// sessionColumns is the select list every session read shares with
+// scanRecord.
+const sessionColumns = "client_ids, renewed, expires, payload"
+
+// scanRecord decodes one row of sessionColumns into an independent record.
+// The payload is a write-time snapshot; client_ids, renewed and expires are
+// the authoritative sources for ClientIDs, Renewed and Expires because
+// AddClientID, RenewSession and TouchSession write only those columns. A
+// NULL renewed or expires is the zero time. A scan error is returned as-is
+// so callers can recognize pgx.ErrNoRows.
+func (s *SessionStore) scanRecord(row pgx.Row) (*session.Record, error) {
+	var clientIDs []string
+	var renewed, expires *time.Time
+	var payload []byte
+	if err := row.Scan(&clientIDs, &renewed, &expires, &payload); err != nil {
+		return nil, err
+	}
+	rec := new(session.Record)
+	if err := s.codec.decode(payload, rec); err != nil {
+		return nil, fmt.Errorf("decode session payload: %w", err)
+	}
+	rec.ClientIDs = clientIDs
+	rec.Renewed = timeOrZero(renewed)
+	rec.Expires = timeOrZero(expires)
+	return rec, nil
+}
+
+// timeOrZero is the read-side inverse of expiresAtPtr: NULL becomes the
+// zero time, and a stored instant is returned in UTC rather than in the
+// process-local zone pgx decodes timestamptz into.
+func timeOrZero(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return t.UTC()
 }

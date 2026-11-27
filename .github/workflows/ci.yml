@@ -51,9 +51,10 @@ jobs:
     needs: lineage-gates
     timeout-minutes: 30
     # Contract suites run against a real PostgreSQL 15 service container,
-    # never testcontainers. The session suite runs WITHOUT WithMay per the
-    # fixture's actual form: its LazyExpiryReclaimsOnRead MAY case is not
-    # implementable (story 1.11) — do not force MAY options in CI.
+    # never testcontainers. MAY options are baked into the fixtures (the
+    # session suite enables WithMay since suite 5.0.0 removed its
+    # unimplementable LazyExpiryReclaimsOnRead case) — do not pass MAY
+    # options in CI.
     services:
       postgres:
         image: postgres:15

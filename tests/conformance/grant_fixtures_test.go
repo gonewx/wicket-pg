@@ -33,7 +33,7 @@ import (
 // shared between the nine entries (AC-3, AD-9).
 //
 // The MUST/MAY case counts in the comments below are those of storagetest
-// SuiteVersion 4.0.0 (wicket v0.10.0); re-count them on every suite bump.
+// SuiteVersion 6.0.0 (wicket v0.15.0); re-count them on every suite bump.
 
 // TestAuthorizationCodeStoreSuite runs the authorization code conformance
 // suite (17 MUST cases plus the MAY credential case, enabled via WithMay)
@@ -47,7 +47,7 @@ func TestAuthorizationCodeStoreSuite(t *testing.T) {
 		storagetest.WithMay(true))
 }
 
-// TestRefreshTokenStoreSuite runs the refresh token conformance suite (19
+// TestRefreshTokenStoreSuite runs the refresh token conformance suite (20
 // MUST cases plus the 3 MAY cases — rotation replay defense, the lifetime
 // update round trip and the credential — enabled via WithMay) against the
 // pgx-backed adapter on a real PostgreSQL server. The suite is skipped when
@@ -73,7 +73,8 @@ func TestReferenceTokenStoreSuite(t *testing.T) {
 }
 
 // TestUserConsentStoreSuite runs the user consent conformance suite (13 MUST
-// cases plus the MAY credential case, enabled via WithMay) against the
+// cases plus the 2 MAY cases — the scopes and times round trip and the
+// credential — enabled via WithMay) against the
 // pgx-backed adapter on a real PostgreSQL server. The suite is skipped when
 // WICKET_PG_TEST_DATABASE_URL is unset.
 func TestUserConsentStoreSuite(t *testing.T) {
@@ -85,7 +86,7 @@ func TestUserConsentStoreSuite(t *testing.T) {
 }
 
 // TestPersistedGrantStoreSuite runs the persisted grant conformance suite
-// (14 MUST cases plus the 2 MAY cases — the combined filter and the
+// (15 MUST cases plus the 2 MAY cases — the combined filter and the
 // credential — enabled via WithMay) against the pgx-backed adapter on a
 // real PostgreSQL server. The suite is skipped when
 // WICKET_PG_TEST_DATABASE_URL is unset.
@@ -97,7 +98,7 @@ func TestPersistedGrantStoreSuite(t *testing.T) {
 		storagetest.WithMay(true))
 }
 
-// TestDeviceFlowStoreSuite runs the device flow conformance suite (14 MUST
+// TestDeviceFlowStoreSuite runs the device flow conformance suite (17 MUST
 // cases plus the 2 MAY cases — the update read-back and the credential —
 // enabled via WithMay) against the pgx-backed adapter on a real PostgreSQL
 // server. The suite is skipped when WICKET_PG_TEST_DATABASE_URL is unset.
@@ -110,7 +111,7 @@ func TestDeviceFlowStoreSuite(t *testing.T) {
 }
 
 // TestBackchannelAuthenticationRequestStoreSuite runs the backchannel
-// authentication request conformance suite (10 MUST cases plus the MAY
+// authentication request conformance suite (12 MUST cases plus the MAY
 // credential case, enabled via WithMay) against the pgx-backed adapter on a
 // real PostgreSQL server. The suite is skipped when
 // WICKET_PG_TEST_DATABASE_URL is unset.

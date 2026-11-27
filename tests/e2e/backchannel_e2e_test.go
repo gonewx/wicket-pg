@@ -6,7 +6,8 @@
 // semantics (a non-zero value lands in expires_at as-is, a zero value lands
 // as NULL and is never cleaned up), the expiry refresh on
 // UpdateBackchannelAuthenticationRequest so no stale expiry survives, and
-// the zero-row no-op semantics of updating an absent request id. The suite
+// the not-found semantics of updating an absent request id (no row is
+// created). The suite
 // is gated behind WICKET_PG_TEST_DATABASE_URL so the plain test run stays
 // green without a database.
 package e2e_test
@@ -83,7 +84,7 @@ func TestE2EBackchannelUpdateRefreshesExpiresAt(t *testing.T) {
 		Status:         models.BackchannelAuthenticationRequestStatusApproved,
 		ExpirationTime: fixedNow,
 	}
-	if err := s.UpdateBackchannelAuthenticationRequest(t.Context(), "req-upd", approved); err != nil {
+	if err := s.UpdateBackchannelAuthenticationRequest(t.Context(), "req-upd", approved, initial.Version); err != nil {
 		t.Fatalf("UpdateBackchannelAuthenticationRequest (non-zero expiry): %v", err)
 	}
 	assertBackchannelExpiresAt(t, pool, "req-upd", fixedNow)
@@ -101,16 +102,16 @@ func TestE2EBackchannelUpdateRefreshesExpiresAt(t *testing.T) {
 		ClientId:  "client-a",
 		Status:    models.BackchannelAuthenticationRequestStatusConsumed,
 	}
-	if err := s.UpdateBackchannelAuthenticationRequest(t.Context(), "req-upd", expiryCleared); err != nil {
+	if err := s.UpdateBackchannelAuthenticationRequest(t.Context(), "req-upd", expiryCleared, approved.Version); err != nil {
 		t.Fatalf("UpdateBackchannelAuthenticationRequest (zero expiry): %v", err)
 	}
 	assertBackchannelExpiresAtNull(t, pool, "req-upd")
 }
 
-// TestE2EBackchannelUpdateMissingRequestIDIsNoOp asserts the zero-row write
-// semantics: updating an absent request id succeeds without error and does
-// not create a new row.
-func TestE2EBackchannelUpdateMissingRequestIDIsNoOp(t *testing.T) {
+// TestE2EBackchannelUpdateMissingRequestIDIsNotFound asserts the zero-row
+// write semantics of the version-guarded update: updating an absent request
+// id fails with storage.ErrNotFound and does not create a new row.
+func TestE2EBackchannelUpdateMissingRequestIDIsNotFound(t *testing.T) {
 	pool := newScratchPool(t)
 	if err := migrations.Up(t.Context(), pool); err != nil {
 		t.Fatalf("Up: %v", err)
@@ -122,8 +123,8 @@ func TestE2EBackchannelUpdateMissingRequestIDIsNoOp(t *testing.T) {
 		ClientId:       "client-a",
 		ExpirationTime: fixedAlive,
 	}
-	if err := s.UpdateBackchannelAuthenticationRequest(t.Context(), "absent", data); err != nil {
-		t.Fatalf("UpdateBackchannelAuthenticationRequest on absent request id: %v", err)
+	if err := s.UpdateBackchannelAuthenticationRequest(t.Context(), "absent", data, 1); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("UpdateBackchannelAuthenticationRequest on absent request id error = %v, want storage.ErrNotFound", err)
 	}
 
 	var count int
@@ -132,15 +133,15 @@ func TestE2EBackchannelUpdateMissingRequestIDIsNoOp(t *testing.T) {
 		t.Fatalf("count backchannel_auth_requests rows: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("backchannel_auth_requests holds %d rows after no-op update, want 0", count)
+		t.Errorf("backchannel_auth_requests holds %d rows after missed update, want 0", count)
 	}
 
 	got, err := s.FindBackchannelAuthenticationRequest(t.Context(), "absent")
 	if !errors.Is(err, storage.ErrNotFound) {
-		t.Errorf("read after no-op update error = %v, want storage.ErrNotFound", err)
+		t.Errorf("read after missed update error = %v, want storage.ErrNotFound", err)
 	}
 	if got != nil {
-		t.Errorf("read after no-op update record = %v, want nil", got)
+		t.Errorf("read after missed update record = %v, want nil", got)
 	}
 }
 

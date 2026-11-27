@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -12,13 +13,16 @@ import (
 	"github.com/gonewx/wicket/storage"
 	"github.com/gonewx/wicket/storage/models"
 	"github.com/gonewx/wicket/storage/storagetest"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // BackchannelAuthenticationRequestStore is the pgx-backed adapter for the
 // wicket storage.BackchannelAuthenticationRequestStore port. Each record is
 // one row keyed by the opaque auth_req_id (handle is the primary key) with
-// the model serialized into the payload column. expires_at is derived at
+// the model serialized into the payload column. version is the optimistic
+// concurrency column and the only source of the record's Version on read.
+// expires_at is derived at
 // write time from the model's ExpirationTime — a zero value is stored as
 // NULL so the record never expires — and reclaimed only by an explicit
 // RemoveExpired call.
@@ -36,20 +40,25 @@ func NewBackchannelAuthenticationRequestStore(pool *pgxpool.Pool, logger *slog.L
 // StoreBackchannelAuthenticationRequest writes a record under the
 // caller-supplied request id. The write is insert-only: a request id that
 // already exists fails with storage.ErrDuplicateHandle and the stored
-// record is left unchanged. expires_at is derived from the model's
+// record is left unchanged. The stored record carries version 1, written
+// back to the caller's data.Version on success. expires_at is derived from
+// the model's
 // ExpirationTime: a zero value is stored as NULL (never expires), a
 // non-zero value is stored as-is; no clock inside the adapter is involved.
 func (s *BackchannelAuthenticationRequestStore) StoreBackchannelAuthenticationRequest(ctx context.Context, requestID string, data *models.BackchannelAuthenticationRequest) error {
-	payload, err := s.codec.encode(data)
+	enc := *data
+	enc.Version = 1
+	payload, err := s.codec.encode(&enc)
 	if err != nil {
 		return fmt.Errorf("store backchannel authentication request payload: %w", err)
 	}
 	_, err = s.pool.Exec(ctx,
-		"INSERT INTO backchannel_auth_requests (handle, expires_at, payload) VALUES ($1, $2, $3)",
+		"INSERT INTO backchannel_auth_requests (handle, version, expires_at, payload) VALUES ($1, 1, $2, $3)",
 		requestID, expiresAtPtr(data.ExpirationTime), payload)
 	if err != nil {
 		return mapDuplicateErr(err, storage.ErrDuplicateHandle)
 	}
+	data.Version = 1
 	s.logger.Debug("backchannel authentication request stored", "handle_prefix", handlePrefix(requestID))
 	return nil
 }
@@ -58,9 +67,10 @@ func (s *BackchannelAuthenticationRequestStore) StoreBackchannelAuthenticationRe
 // record for the request id. A missing request id fails with
 // storage.ErrNotFound and a nil record; the result is never (nil, nil).
 func (s *BackchannelAuthenticationRequestStore) FindBackchannelAuthenticationRequest(ctx context.Context, requestID string) (*models.BackchannelAuthenticationRequest, error) {
+	var version int
 	var payload []byte
 	err := s.pool.QueryRow(ctx,
-		"SELECT payload FROM backchannel_auth_requests WHERE handle = $1", requestID).Scan(&payload)
+		"SELECT version, payload FROM backchannel_auth_requests WHERE handle = $1", requestID).Scan(&version, &payload)
 	if err != nil {
 		return nil, mapReadErr(err, storage.ErrNotFound)
 	}
@@ -68,27 +78,50 @@ func (s *BackchannelAuthenticationRequestStore) FindBackchannelAuthenticationReq
 	if err := s.codec.decode(payload, data); err != nil {
 		return nil, fmt.Errorf("decode backchannel authentication request payload: %w", err)
 	}
+	// The version column is authoritative; rows written before migration
+	// 000007 carry no Version in their payload.
+	data.Version = version
 	s.logger.Debug("backchannel authentication request read", "handle_prefix", handlePrefix(requestID), "found", true)
 	return data, nil
 }
 
-// UpdateBackchannelAuthenticationRequest replaces the payload and the
-// derived expires_at for the record under the request id. The write is a
-// state-migration replacement, not a version-guarded update; updating a
-// request id that is not present succeeds as a no-op.
-func (s *BackchannelAuthenticationRequestStore) UpdateBackchannelAuthenticationRequest(ctx context.Context, requestID string, data *models.BackchannelAuthenticationRequest) error {
-	payload, err := s.codec.encode(data)
+// UpdateBackchannelAuthenticationRequest replaces the record under the
+// request id only when the stored version equals expectedVersion, in one
+// conditional UPDATE that also bumps the version column and refreshes the
+// payload and the derived expires_at. On success the new version
+// expectedVersion+1 is written back to data.Version. Zero matched rows are
+// told apart by a follow-up existence check: a missing request id fails
+// with storage.ErrNotFound and creates nothing, a version mismatch fails
+// with storage.ErrVersionConflict and leaves the record unchanged.
+func (s *BackchannelAuthenticationRequestStore) UpdateBackchannelAuthenticationRequest(ctx context.Context, requestID string, data *models.BackchannelAuthenticationRequest, expectedVersion int) error {
+	enc := *data
+	enc.Version = expectedVersion + 1
+	payload, err := s.codec.encode(&enc)
 	if err != nil {
 		return fmt.Errorf("update backchannel authentication request payload: %w", err)
 	}
-	_, err = s.pool.Exec(ctx,
-		"UPDATE backchannel_auth_requests SET payload = $2, expires_at = $3 WHERE handle = $1",
-		requestID, payload, expiresAtPtr(data.ExpirationTime))
+	tag, err := s.pool.Exec(ctx,
+		"UPDATE backchannel_auth_requests SET version = version + 1, payload = $2, expires_at = $3 "+
+			"WHERE handle = $1 AND version = $4",
+		requestID, payload, expiresAtPtr(data.ExpirationTime), expectedVersion)
 	if err != nil {
 		return fmt.Errorf("update backchannel authentication request: %w", err)
 	}
-	s.logger.Debug("backchannel authentication request updated", "handle_prefix", handlePrefix(requestID))
-	return nil
+	if tag.RowsAffected() == 1 {
+		data.Version = expectedVersion + 1
+		s.logger.Debug("backchannel authentication request updated", "handle_prefix", handlePrefix(requestID))
+		return nil
+	}
+	var one int
+	err = s.pool.QueryRow(ctx,
+		"SELECT 1 FROM backchannel_auth_requests WHERE handle = $1", requestID).Scan(&one)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return storage.ErrNotFound
+		}
+		return fmt.Errorf("recheck backchannel authentication request existence: %w", err)
+	}
+	return storage.ErrVersionConflict
 }
 
 // RemoveBackchannelAuthenticationRequest deletes the record for the request
