@@ -18,7 +18,7 @@
 | 推荐版本 | `v0.5.0`（已于 2026-11-27 发布；要求 wicket v0.15.0；从 v0.4.x 升级须先停掉 v0.4.x 写入方，再 `go get` 后 `Up` 应用 000007，`ConformsTo()` 变为 6.0.0）；宿主仍在 wicket v0.10.0 至 v0.12.0 时用 `v0.4.0`（已于 2026-11-22 发布；要求 wicket v0.10.0；从 v0.3.x 升级只需 `go get`，无新迁移、无回填，`ConformsTo()` 变为 4.0.0）；宿主仍在 wicket v0.8.0 时用 `v0.3.0`（已于 2026-11-22 发布；新增 PAR / DCR store，要求 wicket v0.8.0；从 v0.2.x 升级只需 `go get` 后 `Up` 应用 000005 / 000006，无需回填；从 v0.1.x 升级须先停旧写入方再 `Up` 应用 000004，v0.1.x 签发的刷新令牌回填前不得对其调用 `RemoveExpired`，见部署指南第六节）；与 wicket v0.1.x 组合时用 `v0.1.3`（v0.1.x 线最新发布；v0.1.0 因分发层分裂不推荐引用） |
 | 关键依赖 | `github.com/gonewx/wicket v0.15.0`（三套件 `SuiteVersion` 6.0.0，十一个 `ConformsTo()` 均返回 6.0.0）、`github.com/jackc/pgx/v5 v5.10.0`、`gopkg.in/yaml.v3 v3.0.1`（仅测试） |
 | 入口点 | `store.NewXxxStore(pool, logger)` × 11、`migrations.Up/Down(ctx, pool)` |
-| 测试总量 | 162 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |
+| 测试总量 | 168 个测试函数（门禁 + 单测 + 审计 + 契约套件 + e2e，按 `^func Test` 计） |
 | 门禁 | 三项血缘门禁（原创作权 / 零血缘标注 / 中性提交信息） |
 
 ## 生成的文档
