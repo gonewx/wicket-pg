@@ -57,7 +57,7 @@ logger.Debug("token lookup", "handle", handle)                          // ❌
 - **门禁测试只依赖标准库**。`tests/lineage/` 下禁止任何第三方包（testify 也不行）——门禁必须能在没有依赖树的情况下跑。
 - **契约套件工厂每次返回全新空 store**（隔离 schema + 专属 pool），套件在并行子测试中调用工厂；状态跨用例泄漏会互相污染。
 - **三组套件不共用夹具**：grant 存储族（9 口，含 PAR、DCR）一套、session 一套、keymgmt 一套。
-- **MUST 级全绿；MAY 级默认跳过**（`WithMay(true)` 开启）；未实现的 MAY 级要在文档逐条写明。本仓会话套件不带 `WithMay`（`LazyExpiryReclaimsOnRead` 不可实现，story 1.11 确认）。
+- **MUST 级全绿；MAY 级默认跳过**（`WithMay(true)` 开启）；未实现的 MAY 级要在文档逐条写明。本仓十一个套件的 fixture 均带 `WithMay(true)`：会话套件此前因 `LazyExpiryReclaimsOnRead` 不可实现（story 1.11）而不带，该用例已于套件 5.0.0 删除，自 v0.5.0 起会话套件也跑 MAY 级（含 `RenewSession` / `TouchSession` 并发用例）。
 - 测试包用 `_test` 后缀外部测试包形态。
 - **套件覆盖缺口必须主动枚举**：契约套件是上游定义的最低契约，不等于本仓语义的全覆盖。store 型改动必须逐条列出「套件零覆盖的语义点」，并在 `tests/e2e/` 补**直接列断言**（直查真实表列，不经端口方法自证）。典型零覆盖点：`expires_at` 的写时推导、payload 容器的 JSON 形状、部分唯一索引的冲突分支、`client_ids` 的原子追加。套件绿 ≠ 语义对——Epic 1 每个 store story 都在此处发现过缺口。
 - **story 收尾纪律**：置 done 前「全量回归绿 + commit 落库 + git status 与 File List 一致」三件套齐备。
@@ -80,4 +80,4 @@ logger.Debug("token lookup", "handle", handle)                          // ❌
 ## 七、发布纪律（与贡献相关）
 
 - **Go 版本标记两处形态不同，改动须成对**：`go.mod` 的 `go 1.27` 是对下游的语言版本承诺（不带补丁号），`ci.yml` 的 `1.27.0` 是本仓构建环境 pin（取精确补丁版）。rc 已于 Go 1.27.0 发布后去除；`tests/e2e/ci_job_e2e_test.go` 分别精确比对两者，任何预发布值都不得通过。
-- 文档的安装与升级指令引用 v0.4.0（要求 wicket v0.10.0，补齐 `RemoveOnlineRefreshTokensBySession`，无新迁移，2026-11-22 已发布；下一版本发布前文档须按「待发布」口径陈述；宿主仍在 wicket v0.8.0 时引 v0.3.0，v0.3.0 新增 PAR 与 DCR store；v0.2.0 升级说明中的刷新令牌 `RemoveExpired` 建议已由 v0.2.1 更正）；提到 wicket v0.1.x 组合时只引 v0.1.3（v0.1.x 线首个不携带 rc directive 的版本；v0.1.0 因分发层分裂不可用，v0.1.1 / v0.1.2 可用但仍携带 rc directive）。
+- 文档的安装与升级指令引用 v0.5.0（要求 wicket v0.15.0，新增迁移 000007，待发布：发布前文档按「待发布」口径陈述，发布后改为已发布事实）；宿主仍在 wicket v0.10.0 至 v0.12.0 时引 v0.4.0（补齐 `RemoveOnlineRefreshTokensBySession`，无新迁移，2026-11-22 已发布）；宿主仍在 wicket v0.8.0 时引 v0.3.0，v0.3.0 新增 PAR 与 DCR store；v0.2.0 升级说明中的刷新令牌 `RemoveExpired` 建议已由 v0.2.1 更正）；提到 wicket v0.1.x 组合时只引 v0.1.3（v0.1.x 线首个不携带 rc directive 的版本；v0.1.0 因分发层分裂不可用，v0.1.1 / v0.1.2 可用但仍携带 rc directive）。

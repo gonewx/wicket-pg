@@ -18,11 +18,11 @@
 | `reference_tokens` | `handle` PK | `client_id`, `session_id`（可空，000004，`session_id` 取 `sid` claim）, `expires_at` | 引用令牌 | 按 client / session 移除走定位列；按 subject + client 对吊销仍走 payload 扫描（subject 不落列，有意为之） |
 | `user_consents` | `(subject_id, client_id)` 复合 PK | `expires_at` | 用户同意 | 自然键 upsert（ON CONFLICT）；按 client 移除走 000004 新增的 `client_id` 单列索引 |
 | `persisted_grants` | `key` PK | `subject_id`, `session_id`, `client_id`, `type`, `expires_at` | 持久化 grant | 四维过滤真实列 + 批量吊销 |
-| `device_codes` | `handle` PK + `user_code` 唯一 | `user_code`, `session_id`（可空，000004）, `expires_at` | 设备流 | 双码（device/user）双读路径；`UpdateByUserCode` 同语句刷新 `session_id` |
-| `backchannel_auth_requests` | `handle` PK | `expires_at` | CIBA 后通道 | ExpirationTime 零值存 NULL |
+| `device_codes` | `handle` PK + `user_code` 唯一 | `user_code`, `session_id`（可空，000004）, `version`（000007）, `expires_at` | 设备流 | 双码（device/user）双读路径；`UpdateByUserCode` 为 `version` 守卫条件 UPDATE，同语句刷新 `session_id`；`TakeByDeviceCode` 原子取出 |
+| `backchannel_auth_requests` | `handle` PK | `version`（000007）, `expires_at` | CIBA 后通道 | ExpirationTime 零值存 NULL；更新为 `version` 守卫条件 UPDATE |
 | `pushed_authorization_requests` | `key` PK | `client_id`（可空）, `creation_time`, `entry_expiration`, `retention_expiration`（000005） | 推送授权请求（PAR，可选端口） | insert-only；读取不消费；`TakePushedAuthorizationRequest` 单语句原子取出；按 `retention_expiration` 回收；可见列只写不读 |
 | `client_registrations` | `client_id` PK | `revision`, `removed`, `registration_access_token_digest`（墓碑为 NULL）, `registration_time`, `allowed_cors_origins text[]`（000006） | 客户端注册（DCR）+ origin 查找 | 注册为普通 INSERT，墓碑同行占住主键；更新 / 删除为单语句 revision 守卫 UPDATE；origin 精确查找走 GIN；无清理方法 |
-| `sessions` | `session_id` PK | `client_ids text[]`, `subject_id`（可空）, `expires` | 会话 | `expires` 列名例外（非 `expires_at`） |
+| `sessions` | `session_id` PK | `client_ids text[]`, `subject_id`（可空）, `renewed`（可空，000007）, `expires` | 会话 | `expires` 列名例外（非 `expires_at`）；`Renewed` / `Expires` 以列为准，`RenewSession` / `TouchSession` 只改列 |
 | `key_records` | `handle` PK + `public_id` 部分唯一 | `public_id`, `phase`, `version` | 密钥管理 | 无清理方法；唯一性限 `phase <> 'retired'` |
 
 ## 三、索引职责速查（25 个显式索引）
@@ -49,7 +49,7 @@
 - **幂等**：`schema_migrations(version, applied_at)` 记账，重复 `Up` 跳过已应用版本；`Down` 逆序回滚全部已应用迁移（会删除所有表和数据，含 `000001`；不能用来单独撤销 000004，见 [deployment-guide.md](./deployment-guide.md) 第六节）。
 - **search_path 中立**：DDL 不写 schema 名，全部相对连接当前 search_path——宿主与测试工厂可钉专属 schema 隔离。
 - **执行语义**：每文件一个事务，单连接执行（所有语句落在该连接当前 search_path）；**不起后台 goroutine**。
-- **版本历史**：`000001_init`（初始 9 表 + 记账表 + 13 索引）→ `000002_device_flow_user_code`（user_code 列 + 唯一索引）→ `000003_session_subject_id`（subject_id 列 + 索引）→ `000004_scoped_removal_columns`（7 个定位列 + 8 个索引，同事务从 payload 回填存量行）→ `000005_pushed_authorization_requests`（新表 + 回收索引，不动既有表、无回填）→ `000006_client_registrations`（新表 + origin GIN 索引，不动既有表、无回填）。
+- **版本历史**：`000001_init`（初始 9 表 + 记账表 + 13 索引）→ `000002_device_flow_user_code`（user_code 列 + 唯一索引）→ `000003_session_subject_id`（subject_id 列 + 索引）→ `000004_scoped_removal_columns`（7 个定位列 + 8 个索引，同事务从 payload 回填存量行）→ `000005_pushed_authorization_requests`（新表 + 回收索引，不动既有表、无回填）→ `000006_client_registrations`（新表 + origin GIN 索引，不动既有表、无回填） → `000007_version_guards_session_renewed`（`device_codes` / `backchannel_auth_requests` 的 `version` 列与 `sessions.renewed` 列，无索引，同事务从 payload 回填 `renewed`）。
 
 ## 六、已知风险（deferred-work 留档）
 

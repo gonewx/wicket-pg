@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file; releases before
 
 ## [Unreleased]
 
+Draft for 0.5.0. This release targets wicket v0.15.0 and requires it; hosts that stay on wicket v0.10.0 through v0.12.0 keep using 0.4.0. There is no release for wicket v0.13.0 or v0.14.0 (suite 5.0.0). It adds migration `000007`; the go directive stays `go 1.27`.
+
+### Upgrading from 0.4.x
+
+- **Upgrading raises the host's wicket requirement to v0.15.0.** wicket v0.13.0 changes the device flow and CIBA request port signatures and v0.15.0 adds two session port methods, so 0.4.0 cannot be combined with wicket v0.13.0 or later and this release cannot be combined with wicket v0.12.0 or earlier. Read wicket's CHANGELOG for its own changes between v0.10.0 and v0.15.0 (`[0.11.0]` through `[0.15.0]`): https://github.com/gonewx/wicket/blob/v0.15.0/CHANGELOG.md
+- **Stop every 0.4.x writer, then run `go get` and `migrations.Up`.** `000007` adds `version` to `device_codes` and `backchannel_auth_requests` (existing rows start at 1) and `renewed` to `sessions`, backfilled from each session's payload in the same transaction; it adds no index and rewrites only `sessions`. Apply it before any 0.5.0 store serves traffic, and do not run 0.4.x and 0.5.0 writers side by side: 0.4.x keeps session times in the payload only while 0.5.0 reads and renews them in the columns, and 0.4.x updates device flow and CIBA rows without bumping the version.
+- **`ConformsTo()` returns `6.0.0`.** A host that compares it with the suite constants it builds against needs no change; a host that compares it with a hard-coded `4.0.0` must update that value.
+- **Direct callers of the device flow and CIBA stores pass the version they read.** Updating a missing user code or request id now fails with `storage.ErrNotFound` instead of succeeding as a no-op, and a stale version fails with `storage.ErrVersionConflict`; re-read and retry.
+- **Backing out.** The `000007` down file drops the new columns; renewals written by 0.5.0 live only in `sessions.renewed` / `sessions.expires` and the payload keeps the value of the last full write, so they are lost. `migrations.Down` reverts every migration and deletes all data.
+
+### Added
+
+- Migration `000007_version_guards_session_renewed`.
+- `DeviceFlowStore.TakeByDeviceCode(ctx, deviceCode)`: one `DELETE ... RETURNING` removes the row carrying both codes and returns the record; of concurrent takes exactly one succeeds, the others and a missing code get `(nil, storage.ErrNotFound)`. Expiry is not judged.
+- `SessionStore.RenewSession(ctx, sessionID, renewed, expires)`: one `UPDATE ... RETURNING` sets only `Renewed` and `Expires` and returns the renewed record, including client ids appended concurrently by `AddClientID`. Expired sessions are renewed too; a missing session returns `(nil, session.ErrSessionNotFound)`.
+- `SessionStore.TouchSession(ctx, sessionID, renewed)`: one `UPDATE` sets only `Renewed`, without rewriting the payload, the client ids or a concurrently renewed `Expires`; a missing session returns `session.ErrSessionNotFound`.
+
+### Changed
+
+- Requires wicket v0.15.0 (0.4.0 requires wicket v0.10.0).
+- `DeviceFlowStore.UpdateByUserCode(ctx, userCode, data, expectedVersion)` and `BackchannelAuthenticationRequestStore.UpdateBackchannelAuthenticationRequest(ctx, requestID, data, expectedVersion)` are version-guarded: the record is replaced only when the stored version equals `expectedVersion`, the version becomes `expectedVersion+1` and is written back to `data.Version`; a mismatch returns `storage.ErrVersionConflict` with the record unchanged, a missing key returns `storage.ErrNotFound` and creates nothing. Stores write version 1 and write it back to the caller; reads take `Version` from the column.
+- Session reads take `Renewed` and `Expires` from the `renewed` / `expires` columns (NULL is the zero time), as they already took `ClientIDs` from `client_ids`; `CreateSession` and `UpdateSession` write both columns. The columns hold microseconds, so these two times read back truncated to the microsecond.
+- Session store error texts no longer include the session id; wicket v0.15.0 redacts storage errors anyway, and the id is a credential-like value.
+- All eleven stores report the `SuiteVersion` of the wicket v0.15.0 `storagetest`, `sessiontest` and `keymgmttest` suites, `6.0.0`, and pass those suites on PostgreSQL 15. The session suite now also runs its MAY cases (`WithMay`), including the concurrent `RenewSession` / `TouchSession` / `AddClientID` races; the case that kept it MUST-only (`LazyExpiryReclaimsOnRead`) was removed in suite 5.0.0. The persisted grant (`RemoveAllBySubjectOnly`), refresh token (`UpdateMissingHandleNotFound`) and client registration cases added in 5.0.0 passed without code changes.
+
 ## [0.4.0] - 2026-11-22
 
 This release targets wicket v0.10.0 and requires it; hosts that stay on wicket v0.8.0 keep using 0.3.0. It adds no store and no migration, and the schema is unchanged; the go directive stays `go 1.27`.

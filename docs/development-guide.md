@@ -58,7 +58,7 @@ GOWORK=off go test ./tests/e2e/...
 注意：
 
 - 契约套件工厂每次调用创建**全新隔离 schema**（专属 pool），套件在并行子测试中调用工厂，状态绝不跨用例泄漏。
-- MUST 级用例必须全绿；MAY 级默认跳过（`WithMay(true)` 开启）——本仓会话套件**不带** `WithMay`（其 `LazyExpiryReclaimsOnRead` MAY 项不可实现，story 1.11 确认）。
+- MUST 级用例必须全绿；MAY 级默认跳过（`WithMay(true)` 开启）——本仓各套件 fixture 均带 `WithMay(true)`；会话套件此前因 `LazyExpiryReclaimsOnRead` 不可实现而不带，该用例已于套件 5.0.0 删除，自 v0.5.0 起会话套件同样开启。
 - 三组套件（grant 族 / session / keymgmt）**不共用夹具**，各有独立 fixture。
 
 ### 4.4 本地等价验证（无 Docker 时的降级方案）

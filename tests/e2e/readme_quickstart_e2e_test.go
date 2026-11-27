@@ -28,13 +28,14 @@ import (
 
 const readmePath = "README.md"
 
-// wantReleaseVersion is the release this README documents: v0.4.0, which
-// requires wicket v0.10.0 (suite version 4.0.0) and implements the refresh
-// token port's RemoveOnlineRefreshTokensBySession; it adds no store and no
-// migration. v0.3.0 is the last release for wicket v0.8.0 and v0.2.0 was the
-// first. Hosts still on wicket v0.1.x keep v0.1.3, which the upgrade section
-// names separately.
-const wantReleaseVersion = "v0.4.0"
+// wantReleaseVersion is the release this README documents: v0.5.0, which
+// requires wicket v0.15.0 (suite version 6.0.0), adds migration 000007 and
+// implements the version-guarded device flow / CIBA updates,
+// TakeByDeviceCode, RenewSession and TouchSession. v0.4.0 is the last
+// release for wicket v0.10.0, v0.3.0 the last for wicket v0.8.0. Hosts
+// still on wicket v0.1.x keep v0.1.3, which the upgrade section names
+// separately.
+const wantReleaseVersion = "v0.5.0"
 
 // TestE2EReadmeInstallCommandPinsRealModule verifies AC-1: the install
 // command uses the GOWORK=off form (the external workspace would otherwise

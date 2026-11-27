@@ -36,6 +36,8 @@ wicket-pg/
 │   ├── 000005_pushed_authorization_requests.down.sql
 │   ├── 000006_client_registrations.up.sql    # DCR 表 + allowed_cors_origins GIN 索引
 │   ├── 000006_client_registrations.down.sql
+│   ├── 000007_version_guards_session_renewed.up.sql  # 设备流 / CIBA version 列 + sessions.renewed 列（回填）
+│   ├── 000007_version_guards_session_renewed.down.sql
 │   └── *_audit_test.go          #   时钟审计 / schema 记录三方一致审计
 ├── tests/
 │   ├── lineage/                 # ★ 血缘门禁（CI 第一个 job）
@@ -53,6 +55,7 @@ wicket-pg/
 │       ├── ci_job_e2e_test.go            # CI 配置静态契约（yaml 解析）
 │       ├── readme_quickstart_e2e_test.go # README 快速开始示例可编译性
 │       ├── scoped_removal_*_e2e_test.go  # 000004 定位列写值/回填与按条件移除效果
+│       ├── version_guards_session_renewed_e2e_test.go  # 000007 存量行升级（版本列 / renewed 回填）与续期不重写 payload
 │       ├── online_refresh_removal_e2e_test.go # 在线刷新令牌按 session 移除（缺键遗留行、NUL scope、更新后判定、坏 payload 回滚）
 │       └── {store}_e2e_test.go           # 各 store 语义 e2e
 ├── internal/lineage/            # 预留（空）

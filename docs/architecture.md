@@ -6,11 +6,11 @@
 
 ```mermaid
 flowchart LR
-    subgraph wicket["wicket（端口定义方，只读依赖 v0.10.0）"]
+    subgraph wicket["wicket（端口定义方，只读依赖 v0.15.0）"]
         P1["storage 端口族<br/>AuthorizationCodeStore 等九口<br/>+ ClientOriginLookup"]
         P2["session.Store"]
         P3["keymgmt.RecordStore"]
-        S["契约套件 4.0.0<br/>storagetest / sessiontest / keymgmttest"]
+        S["契约套件 6.0.0<br/>storagetest / sessiontest / keymgmttest"]
         E["哨兵错误<br/>ErrNotFound 等"]
     end
 
@@ -49,7 +49,7 @@ flowchart LR
 |---|---|---|
 | 驱动 | `pgx/v5` 原生接口（`pgxpool.Pool`） | 不经 `database/sql` 抽象层（spec 决策） |
 | 序列化 | 版本容器单列 `payload jsonb`（`{"version":1,"dataProtected":false,"payload":"<base64>"}`） | model 演进时 schema 不必跟着动；`store/codec.go` |
-| 真实列 | 只落查询路径与守卫所需最小集 | 句柄主键、subject/client/type 过滤列、按条件移除的 `client_id` / `session_id` 定位列（000004）、生命周期列、版本守卫列、keymgmt 唯一性列；其余进 payload。例外：PAR 表的可见列只写不读（000005）；DCR 表的可见列只写不读、revision 以列为准（000006）；在线刷新令牌按 session 移除以 `session_id` 定位、事务内锁行后在 Go 侧解码 payload 判定 `offline_access`，不落 scope 列（见 schema 设计记录例外 11） |
+| 真实列 | 只落查询路径与守卫所需最小集 | 句柄主键、subject/client/type 过滤列、按条件移除的 `client_id` / `session_id` 定位列（000004）、生命周期列、版本守卫列、keymgmt 唯一性列；其余进 payload。例外：PAR 表的可见列只写不读（000005）；DCR 表的可见列只写不读、revision 以列为准（000006）；会话的 `Renewed` / `Expires` 以 `renewed` / `expires` 列为准，续期与盖章只改列（000007）；在线刷新令牌按 session 移除以 `session_id` 定位、事务内锁行后在 Go 侧解码 payload 判定 `offline_access`，不落 scope 列（见 schema 设计记录例外 11） |
 | 迁移 | go:embed SQL + 自研幂等记账 `schema_migrations` | 不引入外部迁移库、不依赖宿主装 CLI；文件名沿 golang-migrate 惯例便于未来换工具 |
 | 过期判定 | **禁止** SQL 内 `expires_at > now()` | 适配器用数据库时钟、核心用注入 Clock，集群时钟漂移下结论分裂；清理入口只回收空间 |
 | 清理形态 | 显式入口 `RemoveExpired(ctx, cutoff time.Time) (int, error)` | 调用方驱动的一次性回收、返回计数；不起后台 goroutine |
@@ -119,12 +119,13 @@ erDiagram
 - **单点取用**：`handle` / `session_id` / `key` / `client_id`（`client_registrations`）单列主键。
 - **批量吊销**：`persisted_grants` 落 `subject_id`/`session_id`/`client_id`/`type` 四过滤真实列；`sessions.subject_id`（迁移 000003）、`device_codes.user_code`（迁移 000002）为后补维度列。
 - **按条件移除定位列（迁移 000004）**：`authorization_codes` / `refresh_tokens` / `reference_tokens` 落 `client_id` + `session_id`，`device_codes` 落 `session_id`，`user_consents.client_id` 单建索引；写入时取自模型（引用令牌取 `sid` claim，与 `Token.SessionId()` 同口径），`UpdateRefreshToken` / `UpdateByUserCode` 同语句刷新；7 个新增定位列空值存 NULL（`user_consents.client_id` 是 000001 既有的 `NOT NULL` 列，空 ClientId 存空串，不适用此规则）；存量行由 000004 同事务回填。
-- **原子取出（AD-12）**：`TakeAuthorizationCode` 单语句 `DELETE ... WHERE handle = $1 RETURNING payload`，`TakePushedAuthorizationRequest` 单语句 `DELETE ... WHERE key = $1 RETURNING payload`；0 行返 `ErrNotFound`，不开显式事务、不先 SELECT 再 DELETE。
+- **原子取出（AD-12）**：`TakeAuthorizationCode` 单语句 `DELETE ... WHERE handle = $1 RETURNING payload`，`TakePushedAuthorizationRequest` 单语句 `DELETE ... WHERE key = $1 RETURNING payload`，`TakeByDeviceCode` 单语句 `DELETE ... WHERE handle = $1 RETURNING version, payload`；0 行返 `ErrNotFound`，不开显式事务、不先 SELECT 再 DELETE。
 - **推送授权请求（迁移 000005）**：`pushed_authorization_requests` 以 `key`（只经 `storage.PushedAuthorizationRequestKey` 生成）为主键；`client_id` 与三个时间列写入时复制、只写不读，模型只从 payload 解码（`timestamptz` 只精确到微秒）；回收列 `retention_expiration` 为 `NOT NULL`，`RemoveExpired` 写作 `DELETE ... WHERE retention_expiration < $1`。
 - **客户端注册（迁移 000006）**：`client_registrations` 以 `client_id` 为主键，墓碑与活记录同行（删除置 `removed = true`，`payload` 与注册访问令牌摘要置 NULL，`allowed_cors_origins` 置 `'{}'`），所以注册是一条普通 INSERT，主键冲突同时拒绝已注册与已墓碑；更新与删除是 `WHERE client_id = $1 AND NOT removed AND revision = $2` 的单语句条件 UPDATE，0 行后复查区分 `ErrNotFound` 与 `ErrVersionConflict`；`revision` 只从列读，摘要、注册时间与 origins 三列写入时复制、只写不读；origin 查找走 `allowed_cors_origins @> ARRAY[$1]::text[]` 与 GIN 索引。本表无清理方法。
 - **按条件移除（AD-13）**：空参数直接返回 `(0, nil)`、不发 SQL；否则单语句 `DELETE ... WHERE <定位列> = $1`，返回 `RowsAffected`。
 - **清理**：`expires_at` 列（session 特例叫 `expires`）+ 对应索引，这两类列为 NULL 表示永不过期；PAR 的回收列 `retention_expiration` 为 `NOT NULL`，没有 NULL 形态，零值照常回收。
-- **版本守卫**：`refresh_tokens` 与 `key_records` 有 `version bigint` 列，`client_registrations` 有同义的 `revision bigint` 列（AD-3）。
+- **版本守卫**：`refresh_tokens`、`key_records`、`device_codes` 与 `backchannel_auth_requests`（后两者迁移 000007）有 `version bigint` 列，`client_registrations` 有同义的 `revision bigint` 列（AD-3）。
+- **会话续期（迁移 000007）**：`sessions.renewed` 与既有的 `expires` 列是 `Renewed` / `Expires` 的权威来源；`RenewSession` / `TouchSession` 为单语句 UPDATE，只改这两列、不写 payload 与 `client_ids`，不覆盖并发追加的 client。
 - **唯一性**：`key_records` 部分唯一索引（`phase <> 'retired'`）；`device_codes.user_code` 唯一索引双职责（读路径 + 重复拒绝）。
 
 ## 五、migrations 包
@@ -146,7 +147,7 @@ flowchart LR
 
 - **血缘门禁**：原创作权（文件头）、零上游血缘标注、中性提交信息——先跑并 gate 住一切构建。
 - **契约套件**：十一个入口分别调用 wicket 三套件；工厂每次调用创建全新空 store（隔离 schema + 专属 pool），并行子测试互不污染；MUST 全绿，MAY 级逐条留档。
-- **合规凭证**：每个 store 暴露 `ConformsTo() string`，返回所属套件的 `SuiteVersion` 常量（grant 族 → `storagetest`，session → `sessiontest`，keymgmt → `keymgmttest`）；wicket v0.10.0 下十一个均为 `4.0.0`。
+- **合规凭证**：每个 store 暴露 `ConformsTo() string`，返回所属套件的 `SuiteVersion` 常量（grant 族 → `storagetest`，session → `sessiontest`，keymgmt → `keymgmttest`）；wicket v0.15.0 下十一个均为 `6.0.0`。
 
 ## 七、关键不变量（改动红线）
 
@@ -157,12 +158,13 @@ flowchart LR
 5. SQL 永不出现时钟函数；`RemoveExpired` 统一形态 `DELETE ... WHERE <列> IS NOT NULL AND <列> < $cutoff`（PAR 的 `retention_expiration` 为 `NOT NULL` 列，写作 `DELETE ... WHERE retention_expiration < $cutoff`）。
 6. 文件首行 `// Copyright 2026 Decker.`；任何文件不得出现血缘标注（门禁转红）。
 7. 十一个 store 均暴露单值签名 `ConformsTo() string`。
-8. 写入（Store）与 `UpdateRefreshToken` / `UpdateByUserCode` 在同一语句内写入 / 刷新定位列，不得漂移；空值存 NULL（`user_consents.client_id` 除外，该列 `NOT NULL`）。
+8. 写入（Store）与 `UpdateRefreshToken` / `UpdateByUserCode` 在同一语句内写入 / 刷新定位列与版本列，不得漂移；空值存 NULL（`user_consents.client_id` 除外，该列 `NOT NULL`）。
 9. `Remove*ByClient` / `*BySession` 空参数在 Go 侧短路返回 `(0, nil)`、不发 SQL。
-10. `TakeAuthorizationCode` 与 `TakePushedAuthorizationRequest` 为单语句 `DELETE ... RETURNING`，禁止先 SELECT 再 DELETE、不开显式事务。
+10. `TakeAuthorizationCode`、`TakePushedAuthorizationRequest` 与 `TakeByDeviceCode` 为单语句 `DELETE ... RETURNING`，禁止先 SELECT 再 DELETE、不开显式事务。
 11. `UpdateClientRegistration` / `RemoveClientRegistration` 为单语句条件 UPDATE（`NOT removed AND revision = $2`），禁止先查后写、不开显式事务；墓碑不残留 payload 与注册访问令牌摘要。
+12. `RenewSession` / `TouchSession` 为单语句 UPDATE，只写 `renewed` / `expires` 列，禁止先读整条记录再整条写回。
 
 ## 八、依赖与演进
 
-- 依赖树全部是已发布版本（wicket v0.10.0、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
+- 依赖树全部是已发布版本（wicket v0.15.0、pgx v5.10.0、yaml.v3 测试用），无 go.work 搭桥。
 - 已识别风险（deferred-work 留档）：并发 `Up` 无 advisory lock（多实例并发启动 PK 冲突）；`schema_migrations` 表名与 golang-migrate 默认表同名冲突。`go 1.27rc1` directive 对 dependabot/gopls 的生态摩擦已消除（Go 1.27.0 发布后两处去 rc，2026-08-21）。

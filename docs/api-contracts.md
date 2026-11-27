@@ -10,7 +10,7 @@
 | `migrations` | `github.com/gonewx/wicket-pg/migrations` | schema 迁移入口 |
 | `tests/conformance` | `github.com/gonewx/wicket-pg/tests/conformance` | 契约套件接入（测试用，宿主一般不需要） |
 
-依赖：`github.com/gonewx/wicket v0.10.0`（三套契约套件 `SuiteVersion` 均为 `4.0.0`；`RemoveOnlineRefreshTokensBySession` 自 v0.10.0 起进入端口；`TakeAuthorizationCode` 与 7 个 ByClient / BySession 方法自 wicket v0.5.0 起进入端口，`RemoveDeviceCodesBySession` 与可选端口 `storage.PushedAuthorizationRequestStore` 自 v0.8.0 起；`storage.ClientRegistrationStore` 与 `storage.ClientOriginLookup` 自 v0.5.0 起进入端口，v0.8.0 的动态客户端注册特性起要求显式注入）、`github.com/jackc/pgx/v5 v5.10.0`。
+依赖：`github.com/gonewx/wicket v0.15.0`（三套契约套件 `SuiteVersion` 均为 `6.0.0`；`session.Store` 的 `RenewSession` / `TouchSession` 自 v0.15.0 起进入端口；`DeviceFlowStore.TakeByDeviceCode` 与设备流 / CIBA 更新方法的 `expectedVersion` 参数自 v0.13.0 起；`RemoveOnlineRefreshTokensBySession` 自 v0.10.0 起进入端口；`TakeAuthorizationCode` 与 7 个 ByClient / BySession 方法自 wicket v0.5.0 起进入端口，`RemoveDeviceCodesBySession` 与可选端口 `storage.PushedAuthorizationRequestStore` 自 v0.8.0 起；`storage.ClientRegistrationStore` 与 `storage.ClientOriginLookup` 自 v0.5.0 起进入端口，v0.8.0 的动态客户端注册特性起要求显式注入）、`github.com/jackc/pgx/v5 v5.10.0`。
 
 ## 二、store 包
 
@@ -100,10 +100,11 @@ func (s *PersistedGrantStore) ConformsTo() string
 ### 设备流（`storage.DeviceFlowStore`，双码）
 
 ```go
-func (s *DeviceFlowStore) StoreDeviceAuthorization(ctx context.Context, deviceCode string, userCode string, data *models.DeviceCode) error  // insert-only，双码重复拒绝
+func (s *DeviceFlowStore) StoreDeviceAuthorization(ctx context.Context, deviceCode string, userCode string, data *models.DeviceCode) error  // insert-only，双码重复拒绝；写入版本 1 并回写 data.Version
 func (s *DeviceFlowStore) FindByDeviceCode(ctx context.Context, deviceCode string) (*models.DeviceCode, error)
 func (s *DeviceFlowStore) FindByUserCode(ctx context.Context, userCode string) (*models.DeviceCode, error)
-func (s *DeviceFlowStore) UpdateByUserCode(ctx context.Context, userCode string, data *models.DeviceCode) error
+func (s *DeviceFlowStore) UpdateByUserCode(ctx context.Context, userCode string, data *models.DeviceCode, expectedVersion int) error  // 版本守卫；缺失 ErrNotFound
+func (s *DeviceFlowStore) TakeByDeviceCode(ctx context.Context, deviceCode string) (*models.DeviceCode, error)  // 原子取出，连同 user code 一并删除
 func (s *DeviceFlowStore) RemoveByDeviceCode(ctx context.Context, deviceCode string) error
 func (s *DeviceFlowStore) RemoveDeviceCodesBySession(ctx context.Context, sessionId string) (int, error)  // AD-13；一行承载双码，计数一次
 func (s *DeviceFlowStore) RemoveExpired(ctx context.Context, cutoff time.Time) (int, error)
@@ -113,9 +114,9 @@ func (s *DeviceFlowStore) ConformsTo() string
 ### 后通道认证请求（`storage.BackchannelAuthenticationRequestStore`，CIBA）
 
 ```go
-func (s *BackchannelAuthenticationRequestStore) StoreBackchannelAuthenticationRequest(ctx context.Context, requestID string, data *models.BackchannelAuthenticationRequest) error  // insert-only
+func (s *BackchannelAuthenticationRequestStore) StoreBackchannelAuthenticationRequest(ctx context.Context, requestID string, data *models.BackchannelAuthenticationRequest) error  // insert-only；写入版本 1 并回写 data.Version
 func (s *BackchannelAuthenticationRequestStore) FindBackchannelAuthenticationRequest(ctx context.Context, requestID string) (*models.BackchannelAuthenticationRequest, error)
-func (s *BackchannelAuthenticationRequestStore) UpdateBackchannelAuthenticationRequest(ctx context.Context, requestID string, data *models.BackchannelAuthenticationRequest) error
+func (s *BackchannelAuthenticationRequestStore) UpdateBackchannelAuthenticationRequest(ctx context.Context, requestID string, data *models.BackchannelAuthenticationRequest, expectedVersion int) error  // 版本守卫；缺失 ErrNotFound
 func (s *BackchannelAuthenticationRequestStore) RemoveBackchannelAuthenticationRequest(ctx context.Context, requestID string) error
 func (s *BackchannelAuthenticationRequestStore) RemoveExpired(ctx context.Context, cutoff time.Time) (int, error)
 func (s *BackchannelAuthenticationRequestStore) ConformsTo() string
@@ -168,6 +169,8 @@ func (s *SessionStore) DeleteSession(ctx context.Context, sessionID string) erro
 func (s *SessionStore) GetSessionsBySubjectID(ctx context.Context, subjectID string) ([]*session.Record, error)
 func (s *SessionStore) DeleteSessionsBySubjectID(ctx context.Context, subjectID string) (int, error)
 func (s *SessionStore) AddClientID(ctx context.Context, sessionID, clientID string) error  // text[] 原子追加去重
+func (s *SessionStore) RenewSession(ctx context.Context, sessionID string, renewed, expires time.Time) (*session.Record, error)  // 单语句只改 Renewed / Expires
+func (s *SessionStore) TouchSession(ctx context.Context, sessionID string, renewed time.Time) error  // 单语句只改 Renewed
 func (s *SessionStore) DeleteExpired(ctx context.Context, cutoff time.Time) (int, error)
 func (s *SessionStore) ConformsTo() string
 ```
@@ -211,6 +214,9 @@ func Down(ctx context.Context, pool *pgxpool.Pool) error  // 逆序回滚已应�
 - 错误判定用 `errors.Is`（哨兵是 `%w` 链上的一环）。
 - **原子取出（AD-12）**：`TakeAuthorizationCode` 用单语句 `DELETE FROM authorization_codes WHERE handle = $1 RETURNING payload` 完成定位、删除与返回，不开显式事务、不先 SELECT 再 DELETE；0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一句柄只有一个成功。DELETE 已提交后 payload 解码失败时返回包装后的解码错误（不是 `ErrNotFound`），码不恢复；ctx 取消或连接中断等传输失败同理——任何非 `ErrNotFound` 错误都可能意味着码已被消费，此时重试会得到 `ErrNotFound`。
 - **PAR 原子取出（AD-12）**：`TakePushedAuthorizationRequest` 用单语句 `DELETE FROM pushed_authorization_requests WHERE key = $1 RETURNING payload`，其余语义同上：0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一键只有一个成功；DELETE 已提交后的解码或传输错误都可能意味着请求已被消费，请求不恢复。
+- **设备流原子取出（AD-12）**：`TakeByDeviceCode` 用单语句 `DELETE FROM device_codes WHERE handle = $1 RETURNING version, payload`，一行承载双码，取出后两条读路径都查不到；0 行返回 `storage.ErrNotFound`；不判断过期；并发取同一 device code 只有一个成功；DELETE 已提交后的解码或传输错误都可能意味着记录已被消费。
+- **设备流与 CIBA 版本守卫（AD-3，wicket v0.13.0）**：`UpdateByUserCode` / `UpdateBackchannelAuthenticationRequest` 与 `UpdateRefreshToken` 同一形态——单条 `SET version = version + 1 ... WHERE <键> = $1 AND version = $n`，成功后把 `expectedVersion+1` 回写到 `data.Version`；0 行后复查键是否存在，缺失返回 `storage.ErrNotFound`（不新建记录，取代此前的空操作语义），存在返回 `storage.ErrVersionConflict` 且记录不变。读路径的 `Version` 取自 `version` 列（迁移 000007，存量行为 1）。见 [schema-design-record.md](./schema-design-record.md) 例外 12。
+- **会话续期与盖章（wicket v0.15.0）**：`RenewSession` 为单语句 `UPDATE sessions SET renewed = $2, expires = $3 WHERE session_id = $1 RETURNING ...`，返回续期后的独立副本；`TouchSession` 为单语句 `UPDATE sessions SET renewed = $2 WHERE session_id = $1`。两者都不判过期、不新建记录，缺失返回 `session.ErrSessionNotFound`，也都不写 payload 与 `client_ids`，因此不会覆盖并发 `AddClientID` 追加的 client，`TouchSession` 也不会回滚并发续期写入的 `Expires`。会话读路径的 `Renewed` / `Expires` 取自列（微秒精度，NULL 即零值）。见 [schema-design-record.md](./schema-design-record.md) 例外 13。
 - **DCR revision 守卫（AD-3）**：`UpdateClientRegistration` / `RemoveClientRegistration` 只发一条条件 UPDATE，不先查后写、不开显式事务；0 行后的 `SELECT removed ... WHERE client_id = $1` 只用于区分 `ErrNotFound` 与 `ErrVersionConflict`。读取遇到无法解码的 payload 时返回包装后的解码错误，不是 `ErrNotFound`。
 - **按条件移除（AD-13）**：8 个 `Remove*ByClient` / `*BySession` 方法（不含下一条的 `RemoveOnlineRefreshTokensBySession`）在参数为空串时直接返回 `(0, nil)`、不发 SQL（`user_consents.client_id` 为 `NOT NULL` 列，空 ClientId 以空串存储，空参数若下发会误删）；否则执行单语句 `DELETE ... WHERE <定位列> = $1`，返回 `RowsAffected`，零匹配返回 `(0, nil)`。定位列由迁移 000004 增加并回填存量行，见 [schema-design-record.md](./schema-design-record.md) 例外 7、8。`PersistedGrantStore` 无新增方法，按 client / session 移除沿用 `RemoveAll` 过滤。
 - **在线刷新令牌按 session 移除（wicket v0.10.0）**：`RemoveOnlineRefreshTokensBySession` 同样对空参数短路返回 `(0, nil)`、不发 SQL；否则在一个事务内 `SELECT handle, payload ... WHERE session_id = $1 FOR UPDATE` 锁住该会话的令牌，用 codec 逐行解码，`AuthorizedScopes` 不含精确元素 `offline_access` 的（`offline_access_extended` 不算离线；scope 缺失、为 nil 或为空的视为在线）在同一事务内按句柄删除，返回删除条数；离线令牌保留，`session_id` 为 NULL 的令牌永不命中。scope 在 Go 侧判定而非 SQL 内（jsonb 拒绝 codec 可能写入的 `\u0000`），也不新增列，因此无需迁移；任一行解码失败或数据库出错都回滚、不删任何行并返回包装后的错误。wicket 在启用 `SetRevokeOnlineRefreshTokensOnLogout` 或高安全档时于登出回调中调用它；只有带 session 写入的在线令牌会被选中。见 [schema-design-record.md](./schema-design-record.md) 例外 11。
@@ -221,11 +227,11 @@ func Down(ctx context.Context, pool *pgxpool.Pool) error  // 逆序回滚已应�
 
 | Store | 值 |
 |---|---|
-| 九个 grant 族 store（含 `PushedAuthorizationRequestStore` 与 `ClientRegistrationStore`） | `storagetest.SuiteVersion`（`"4.0.0"`） |
-| `SessionStore` | `sessiontest.SuiteVersion`（`"4.0.0"`） |
-| `KeyRecordStore` | `keymgmttest.SuiteVersion`（`"4.0.0"`） |
+| 九个 grant 族 store（含 `PushedAuthorizationRequestStore` 与 `ClientRegistrationStore`） | `storagetest.SuiteVersion`（`"6.0.0"`） |
+| `SessionStore` | `sessiontest.SuiteVersion`（`"6.0.0"`） |
+| `KeyRecordStore` | `keymgmttest.SuiteVersion`（`"6.0.0"`） |
 
-返回值直接取自套件常量，不硬编码；wicket v0.10.0 下三套件同步为 `4.0.0`（wicket 自 v0.3.0 起让三套件版本同步递进；v0.10.0 因 `storage.RefreshTokenStore` 新增方法而整体从 3.0.0 递进）。宿主在装配期分别与对应套件的 `SuiteVersion` 比对。注意：Go 在一次构建中只选定一个 wicket 版本，store 返回的常量与宿主比对用的常量来自同一个包，因此该比对在同一构建内恒成立；返回值的可信度来自本仓的交付纪律——依赖升级、方法补齐与套件全绿原子交付（AD-11 修订），声称的版本即本仓已通过的套件版本。
+返回值直接取自套件常量，不硬编码；wicket v0.15.0 下三套件同步为 `6.0.0`（wicket 自 v0.3.0 起让三套件版本同步递进；v0.10.0 因 `storage.RefreshTokenStore` 新增方法从 3.0.0 递进到 4.0.0，v0.13.0 因设备流 / CIBA 端口改签名递进到 5.0.0，v0.15.0 因 `session.Store` 新增方法递进到 6.0.0；本仓没有面向 5.0.0 的发布）。宿主在装配期分别与对应套件的 `SuiteVersion` 比对。注意：Go 在一次构建中只选定一个 wicket 版本，store 返回的常量与宿主比对用的常量来自同一个包，因此该比对在同一构建内恒成立；返回值的可信度来自本仓的交付纪律——依赖升级、方法补齐与套件全绿原子交付（AD-11 修订），声称的版本即本仓已通过的套件版本。
 
 ## 六、宿主集成最小示例（完整见 README.md）
 
