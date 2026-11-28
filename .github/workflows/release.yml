@@ -1,0 +1,63 @@
+# 推送发布 tag（vX.Y.Z）时创建对应的 GitHub Release，正文取该 tag 提交上
+# CHANGELOG.md 的 [X.Y.Z] 段落（去掉底部链接定义行）。
+# GitHub 页面的“最新版本”只看 Release，不看 tag；没有这一步，tag 推上去后
+# Releases 区块不会更新。
+# - Release 已存在时跳过，不覆盖手工改过的正文。
+# - 段落缺失（tag 时 CHANGELOG 未定版）时仍创建 Release，正文指向 CHANGELOG，
+#   并给出 warning 注解，便于事后手工补正文。
+# - 段落到下一个任意 `## ` 标题为止（不只是 `## [`），因为 [0.2.0] 之后紧跟
+#   不带方括号的 `## 0.1.x` 汇总段，不能并入 0.2.0 的正文。
+# - 正文超过 GitHub 上限（125000 字符）时按行截断，末尾附完整 CHANGELOG 链接。
+# - 只有语义版本最高的 tag 才标为 Latest，维护分支（如 release/0.6）上的补丁版
+#   不会抢走 Latest。
+name: release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release from CHANGELOG
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping."
+            exit 0
+          fi
+          ver="${TAG#v}"
+          changelog_url="https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md"
+          if awk -v ver="$ver" '
+              $0 ~ /^## / { if (found) exit; if (index($0, "## [" ver "]") == 1) { found = 1; next } }
+              found && $0 !~ /^\[[^]]+\]: https?:\/\// { print }
+              END { if (!found) exit 1 }
+            ' CHANGELOG.md | sed -e '/./,$!d' > notes.md && [ -s notes.md ]; then
+            :
+          else
+            echo "::warning::CHANGELOG.md has no [$ver] section at $TAG; release notes point to the CHANGELOG instead."
+            printf 'See [CHANGELOG.md](%s).\n' "$changelog_url" > notes.md
+          fi
+          limit=120000
+          if [ "$(wc -c < notes.md)" -gt "$limit" ]; then
+            awk -v limit="$limit" '{ n += length($0) + 1; if (n > limit) exit; print }' notes.md > notes.trunc
+            printf '\n---\n\nThese notes are truncated. The full entry is in [CHANGELOG.md](%s).\n' "$changelog_url" >> notes.trunc
+            mv notes.trunc notes.md
+          fi
+          highest="$(git ls-remote --tags --refs origin 'v*' | sed 's|.*refs/tags/||' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          latest=false
+          if [ "$highest" = "$TAG" ]; then latest=true; fi
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md --latest="$latest"
