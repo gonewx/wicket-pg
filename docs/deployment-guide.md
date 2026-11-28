@@ -78,14 +78,16 @@ git push origin v0.5.0
 
    任一步失败：先上报，不重打、不移动、不删除 tag；修正只能通过发新补丁版本（如 v0.5.1）完成。
 
-6. **创建 GitHub Release**（在仓库根目录执行）：发布说明从 `CHANGELOG.md` 截取该版本条目（`## [x.y.z]` 标题之后、下一个 `## ` 标题之前），与仓内同文；`--verify-tag` 保证 tag 不存在时失败而不是由 gh 自建 tag：
+6. **确认 GitHub Release 已自动创建**：推送 `vX.Y.Z` tag 会触发 `.github/workflows/release.yml`，它取该 tag 提交上 `CHANGELOG.md` 的 `## [X.Y.Z]` 段落（到下一个 `## ` 标题为止，去掉底部链接定义行）作为正文创建 Release；只有语义版本最高的 tag 标为 Latest。**不要再手工 `gh release create`**：workflow 发现 Release 已存在会直接跳过，手工先建会与之抢跑，正文也可能与 CHANGELOG 不一致。推 tag 后到 Actions 页确认 `release` 运行成功，并核对 Release 与 Latest：
 
 ```bash
 V=v0.5.0
-awk -v h="## [${V#v}]" 'index($0,h)==1{f=1;next} f&&/^## /{exit} f' CHANGELOG.md > "/tmp/notes-$V.md"
-test -s "/tmp/notes-$V.md"
-NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh release create "$V" -R gonewx/wicket-pg --verify-tag --title "$V" --notes-file "/tmp/notes-$V.md"
+NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh run list -R gonewx/wicket-pg --workflow release.yml -L 3
+NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh release view "$V" -R gonewx/wicket-pg
+NO_PROXY="*" HTTP_PROXY="" HTTPS_PROXY="" gh api repos/gonewx/wicket-pg/releases/latest -q .tag_name
 ```
+
+   运行带 warning「CHANGELOG.md has no [X.Y.Z] section」时，说明打 tag 时 CHANGELOG 未定版，Release 正文只有一行 CHANGELOG 链接：用 `gh release edit "$V" --notes-file ...` 手工补正文（tag 不可移动，不要为此重打 tag）。运行失败（如权限问题）时修正后在 Actions 页 Re-run 即可，workflow 幂等。
 
 7. **发版纪律**：
    - **Go 版本标记两处形态不同且各自精确**：`go.mod` 的 `go 1.27` 是对下游的语言版本承诺（不带补丁号），`ci.yml` 的 `1.27.0` 是本仓构建环境 pin（取精确补丁版）。rc 已于 Go 1.27.0 发布后去除，`tests/e2e/ci_job_e2e_test.go` 分别精确比对两者，预发布值一律不得通过。

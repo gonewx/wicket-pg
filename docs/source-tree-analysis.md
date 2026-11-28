@@ -61,6 +61,7 @@ wicket-pg/
 ├── internal/lineage/            # 预留（空）
 ├── docs/                        # 本知识库（index 见 index.md）
 ├── .github/workflows/ci.yml     # CI：lineage-gates → build、conformance
+├── .github/workflows/release.yml # 推送 vX.Y.Z tag 时按 CHANGELOG 段落创建 GitHub Release
 ├── go.mod / go.sum
 ├── LICENSE                      # MIT
 ├── PROVENANCE.md                # 独立创作声明
